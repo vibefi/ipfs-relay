@@ -1,0 +1,31 @@
+# Default variables — override per-host in inventory.ini or with -e flags
+
+# Where the app lives on the server
+app_dir: /opt/ipfs-relay
+
+# Git repo to clone (update if you fork or use a deploy key)
+app_repo: https://github.com/vibefi/ipfs-relay.git
+app_branch: master
+
+# Server's public IP — used by Kubo to announce its swarm address.
+# Defaults to the Ansible inventory host. Override if you have an elastic IP.
+kubo_public_ip: "{{ ansible_host }}"
+
+# System packages to install before Docker
+base_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - git
+  - ufw
+  - htop
+  - vim
+  - unattended-upgrades
+
+# Firewall: ports to open (besides 22 which is always allowed)
+firewall_allow_ports:
+  - { port: "80",   proto: "tcp",      comment: "HTTP (Caddy redirect)" }
+  - { port: "443",  proto: "tcp",      comment: "HTTPS" }
+  - { port: "443",  proto: "udp",      comment: "HTTP/3 QUIC" }
+  - { port: "4001", proto: "tcp",      comment: "IPFS swarm" }
+  - { port: "4001", proto: "udp",      comment: "IPFS swarm QUIC" }

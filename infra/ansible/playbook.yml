@@ -1,0 +1,208 @@
+---
+# VibeFi IPFS Relay — server provisioning playbook
+#
+# Usage:
+#   ansible-playbook -i inventory.ini playbook.yml
+#
+# Or via the setup.sh wrapper:
+#   ./setup.sh <IP> [USER] [SSH_KEY_PATH]
+#
+# Targets: Debian 12 (Bookworm) / Debian 13 (Trixie) — fresh install
+
+- name: Provision VibeFi IPFS relay node
+  hosts: relay
+  become: true
+
+  vars:
+    # Derived from group_vars/all.yml — override in inventory or with -e
+    docker_gpg_key_url: https://download.docker.com/linux/debian/gpg
+    docker_gpg_key_path: /etc/apt/keyrings/docker.asc
+    docker_packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+
+  tasks:
+
+    # ── System bootstrap ───────────────────────────────────────────────────────
+
+    - name: Set hostname
+      hostname:
+        name: ipfs-relay
+
+    - name: Set timezone to UTC
+      timezone:
+        name: UTC
+
+    - name: Update apt cache and upgrade packages
+      apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      apt:
+        name: "{{ base_packages }}"
+        state: present
+
+    - name: Enable unattended security upgrades
+      debconf:
+        name: unattended-upgrades
+        question: unattended-upgrades/enable_auto_updates
+        value: "true"
+        vtype: boolean
+
+    # ── Docker ─────────────────────────────────────────────────────────────────
+
+    - name: Create /etc/apt/keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download Docker GPG key
+      get_url:
+        url: "{{ docker_gpg_key_url }}"
+        dest: "{{ docker_gpg_key_path }}"
+        mode: "0644"
+
+    - name: Get Debian version codename
+      command: sh -c ". /etc/os-release && echo $VERSION_CODENAME"
+      register: debian_codename
+      changed_when: false
+
+    - name: Get host architecture
+      command: dpkg --print-architecture
+      register: host_arch
+      changed_when: false
+
+    - name: Add Docker apt repository
+      apt_repository:
+        repo: >-
+          deb [arch={{ host_arch.stdout }}
+          signed-by={{ docker_gpg_key_path }}]
+          https://download.docker.com/linux/debian
+          {{ debian_codename.stdout }} stable
+        filename: docker
+        state: present
+
+    - name: Install Docker packages
+      apt:
+        name: "{{ docker_packages }}"
+        state: present
+        update_cache: true
+
+    - name: Enable and start Docker
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Add deploy user to docker group (skip if root)
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+      when: ansible_user != 'root'
+
+    # ── Firewall ───────────────────────────────────────────────────────────────
+    # Sensitive ports (Kubo API :5001, relay :8080) use `expose:` in compose,
+    # not `ports:` — Docker never host-binds them, so UFW default-deny is
+    # sufficient. Only the ports explicitly allowed below are reachable.
+
+    - name: Allow SSH through UFW (before enabling)
+      ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        comment: SSH
+
+    - name: Open application ports
+      ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ firewall_allow_ports }}"
+
+    - name: Enable UFW (default deny incoming)
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    # ── App deployment ─────────────────────────────────────────────────────────
+
+    - name: Create app directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Clone / update ipfs-relay repository
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}"
+        version: "{{ app_branch }}"
+        force: true
+      register: git_result
+
+    - name: Write .env file from inventory variables
+      template:
+        src: templates/env.j2
+        dest: "{{ app_dir }}/infra/.env"
+        mode: "0600"
+
+    - name: Install systemd service unit
+      copy:
+        src: "{{ app_dir }}/infra/systemd/ipfs-relay.service"
+        dest: /etc/systemd/system/ipfs-relay.service
+        remote_src: true
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Enable ipfs-relay service (start on boot)
+      systemd:
+        name: ipfs-relay
+        enabled: true
+        daemon_reload: true
+
+    # ── Initial build & start ──────────────────────────────────────────────────
+
+    - name: Build Docker images
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}/infra"
+        build: always
+        state: present
+      environment:
+        KUBO_PUBLIC_IP: "{{ kubo_public_ip }}"
+
+    - name: Start services
+      systemd:
+        name: ipfs-relay
+        state: started
+
+    # ── Verification ───────────────────────────────────────────────────────────
+
+    - name: Wait for relay health endpoint
+      uri:
+        url: http://localhost:8080/health
+        status_code: 200
+        timeout: 30
+      retries: 10
+      delay: 5
+      register: health_result
+
+    - name: Print health response
+      debug:
+        msg: "Relay is up: {{ health_result.json }}"
+
+  # ── Handlers ─────────────────────────────────────────────────────────────────
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: true
+

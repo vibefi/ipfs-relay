@@ -1,0 +1,38 @@
+# ipfs.vibefi.dev — VibeFi IPFS upload relay
+# Caddy automatically provisions and renews TLS via Let's Encrypt.
+# Replace the domain if you're testing locally (e.g. use `:8080` for plain HTTP).
+
+ipfs.vibefi.dev {
+    # Route all traffic to the relay service
+    reverse_proxy relay:8080 {
+        # Pass real client IP for rate-limiting and audit logging
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+
+        # Generous timeout to match the relay's 120s upload limit
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 130s
+        }
+    }
+
+    # Gzip responses (especially JSON)
+    encode gzip
+
+    # Structured access logs
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+
+    # Tighten headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+}
+
+# HTTP → HTTPS redirect is handled automatically by Caddy

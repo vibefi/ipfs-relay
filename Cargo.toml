@@ -1,0 +1,76 @@
+[package]
+name = "ipfs-relay"
+version = "0.1.0"
+edition = "2024"
+description = "IPFS upload relay service for VibeFi bundles"
+license = "MIT"
+
+[[bin]]
+name = "ipfs-relay"
+path = "src/main.rs"
+
+[dependencies]
+# --- Web framework ---
+axum = { version = "0.8", features = ["multipart", "macros"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "timeout", "trace", "request-id", "normalize-path", "compression-gzip"] }
+
+# --- Async runtime ---
+tokio = { version = "1", features = ["full"] }
+
+# --- Serialization ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# --- Database (SQLite for embedded simplicity; swap DSN to postgres:// for prod) ---
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "postgres", "macros", "chrono", "uuid"] }
+
+# --- ID generation ---
+ulid = { version = "1", features = ["serde"] }
+
+# --- HTTP client for Pinata / 4EVERLAND ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
+
+# --- Configuration ---
+config = { version = "0.15", features = ["toml", "env"] }
+
+# --- Tracing / structured logging ---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-bunyan-formatter = "0.3"
+
+# --- Metrics ---
+axum-prometheus = "0.7"
+prometheus = { version = "0.13", features = ["process"] }
+
+# --- Error handling ---
+thiserror = "2"
+anyhow = "1"
+
+# --- Rate limiting (token bucket via tower-governor) ---
+tower_governor = { version = "0.4", features = ["axum"] }
+
+# --- Time ---
+chrono = { version = "0.4", features = ["serde"] }
+
+# --- CID computation (UnixFS DAG-PB over SHA2-256 → base32 CIDv1) ---
+cid = "0.11"
+multihash = { version = "0.19", features = ["sha2"] }
+sha2 = "0.10"
+
+# --- Misc utils ---
+bytes = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.22"
+hex = "0.4"
+
+[dev-dependencies]
+axum-test = "16"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

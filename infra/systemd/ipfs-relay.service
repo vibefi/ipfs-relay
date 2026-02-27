@@ -1,0 +1,26 @@
+[Unit]
+Description=VibeFi IPFS Relay (Docker Compose)
+Documentation=https://github.com/vibefi/ipfs-relay
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ipfs-relay/infra
+
+ExecStartPre=/usr/bin/docker compose pull --quiet
+ExecStart=/usr/bin/docker compose up --build --detach --remove-orphans
+ExecStop=/usr/bin/docker compose stop
+ExecReload=/usr/bin/docker compose up --build --detach --remove-orphans
+
+# Give containers time to start/stop gracefully
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
