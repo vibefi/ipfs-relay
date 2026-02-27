@@ -3,7 +3,11 @@
 /// Uses SQLite by default (great for single-node; swap DSN to `postgres://`
 /// for multi-replica production deployments).
 use chrono::Utc;
-use sqlx::{Pool, Sqlite, SqlitePool};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    Pool, Sqlite,
+};
+use std::str::FromStr;
 use tracing::instrument;
 
 use crate::error::AppError;
@@ -25,9 +29,17 @@ pub struct ReplicationJob {
 
 impl Database {
     pub async fn connect(url: &str) -> Result<Self, AppError> {
-        let pool = SqlitePool::connect(url)
+        // Enable foreign key enforcement — SQLite skips FK checks by default.
+        let opts = SqliteConnectOptions::from_str(url)
+            .map_err(AppError::Database)?
+            .foreign_keys(true)
+            .create_if_missing(true);
+
+        let pool = SqlitePoolOptions::new()
+            .connect_with(opts)
             .await
             .map_err(AppError::Database)?;
+
         Ok(Self { pool })
     }
 

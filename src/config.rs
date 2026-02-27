@@ -90,8 +90,13 @@ impl AppConfig {
             .add_source(File::with_name("config/default").required(false))
             .add_source(File::with_name(&format!("config/{env}")).required(false))
             .add_source(
+                // Use __ as the nesting separator so single-underscore field names
+                // (e.g. kubo_api_url, pinata_jwt) are not split incorrectly.
+                // Env vars must use __ between nesting levels:
+                //   VIBEFI_RELAY__IPFS__KUBO_API_URL=http://kubo:5001
+                //   VIBEFI_RELAY__PINNING__PINATA_JWT=...
                 Environment::with_prefix("VIBEFI_RELAY")
-                    .separator("_")
+                    .separator("__")
                     .try_parsing(true),
             )
             .build()?;

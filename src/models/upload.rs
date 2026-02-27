@@ -75,7 +75,8 @@ pub struct UploadRecord {
     pub file_count: i64,
     pub created_at: DateTime<Utc>,
     pub request_id: String,
-    /// JSON-encoded Vec<ReplicationEntry>
+    /// Plain status string for this upload record (e.g. "pending", "completed").
+    /// Per-target replication detail is tracked separately in the replication_jobs table.
     pub replication_status: String,
 }
 

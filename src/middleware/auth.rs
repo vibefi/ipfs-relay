@@ -39,7 +39,14 @@ pub async fn auth_middleware(
     let ctx = match bearer {
         Some(key) => {
             let valid_keys = state.config.api_keys();
-            if valid_keys.is_empty() || valid_keys.contains(&key) {
+            if valid_keys.is_empty() {
+                // No allowlist configured: ignore the bearer token and treat the
+                // request as anonymous rather than granting elevated auth mode.
+                AuthContext {
+                    mode: AuthMode::Anonymous,
+                    api_key: None,
+                }
+            } else if valid_keys.contains(&key) {
                 AuthContext {
                     mode: AuthMode::ApiKey,
                     api_key: Some(key),

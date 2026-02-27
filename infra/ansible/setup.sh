@@ -77,4 +77,5 @@ ansible-playbook \
 
 echo ""
 echo "==> Done! Service should be running at https://ipfs.vibefi.dev"
-echo "    Health: curl http://${SERVER_IP}:8080/health"
+echo "    Health (public): curl https://ipfs.vibefi.dev/health"
+echo "    Health (on server): ssh ${ANSIBLE_USER}@${SERVER_IP} 'curl -s http://localhost/health'"

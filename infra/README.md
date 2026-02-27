@@ -25,7 +25,7 @@ infra/
 
 ```bash
 cd infra/ansible
-./setup.sh <SERVER_IP> root <PASSWORD>
+./setup.sh <SERVER_IP> root ~/.ssh/your_key
 ```
 
 That's it. The playbook will:

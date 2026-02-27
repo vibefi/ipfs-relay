@@ -186,9 +186,13 @@
 
     # ── Verification ───────────────────────────────────────────────────────────
 
-    - name: Wait for relay health endpoint
+    - name: Wait for relay health endpoint (via Caddy on port 80)
       uri:
-        url: http://localhost:8080/health
+        # Port 8080 is not host-bound (expose: only). Check through Caddy,
+        # which handles the redirect to HTTPS — follow it so we get a real response.
+        url: http://localhost/health
+        follow_redirects: all
+        validate_certs: false
         status_code: 200
         timeout: 30
       retries: 10

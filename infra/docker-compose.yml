@@ -11,8 +11,8 @@ services:
     env_file: .env
     environment:
       APP_ENV: production
-      VIBEFI_RELAY_IPFS_KUBO_API_URL: http://kubo:5001
-      VIBEFI_RELAY_DATABASE_URL: sqlite:///data/ipfs-relay.db
+      VIBEFI_RELAY__IPFS__KUBO_API_URL: http://kubo:5001
+      VIBEFI_RELAY__DATABASE__URL: sqlite:///data/ipfs-relay.db
     volumes:
       - relay-data:/data
     # Only reachable by Caddy on the internal network — not exposed to host
@@ -31,7 +31,7 @@ services:
 
   # ── Kubo (go-ipfs) node ─────────────────────────────────────────────────────
   kubo:
-    image: ipfs/kubo:latest
+    image: ipfs/kubo:v0.32.1
     restart: unless-stopped
     entrypoint: ["/usr/local/bin/start_ipfs.sh"]
     volumes:
