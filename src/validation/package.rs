@@ -105,9 +105,8 @@ pub fn validate_vibefi_package(
         .get("manifest.json")
         .ok_or_else(|| AppError::InvalidPackage("manifest.json missing from bundle root".into()))?;
 
-    let manifest: Manifest = serde_json::from_slice(&manifest_file.content).map_err(|e| {
-        AppError::InvalidPackage(format!("manifest.json failed to parse: {e}"))
-    })?;
+    let manifest: Manifest = serde_json::from_slice(&manifest_file.content)
+        .map_err(|e| AppError::InvalidPackage(format!("manifest.json failed to parse: {e}")))?;
 
     // ── Rule 4: required fields (presence already enforced by Deserialize) ───
     // Verify non-null primitives

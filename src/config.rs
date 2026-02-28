@@ -118,14 +118,36 @@ impl AppConfig {
     }
 }
 
-fn default_host() -> String { "0.0.0.0".into() }
-fn default_port() -> u16 { 8080 }
-fn default_timeout() -> u64 { 120 }
-fn default_db_url() -> String { "sqlite://ipfs-relay.db".into() }
-fn default_retention_days() -> u32 { 90 }
-fn default_kubo_url() -> String { "http://127.0.0.1:5001".into() }
-fn default_max_bytes() -> u64 { 10 * 1024 * 1024 }   // 10 MiB
-fn default_max_files() -> usize { 1500 }
-fn default_max_file_bytes() -> u64 { 5 * 1024 * 1024 } // 5 MiB
-fn default_ip_per_hour() -> u32 { 30 }
-fn default_key_per_day() -> u32 { 300 }
+fn default_host() -> String {
+    "0.0.0.0".into()
+}
+fn default_port() -> u16 {
+    8080
+}
+fn default_timeout() -> u64 {
+    120
+}
+fn default_db_url() -> String {
+    "sqlite://ipfs-relay.db".into()
+}
+fn default_retention_days() -> u32 {
+    90
+}
+fn default_kubo_url() -> String {
+    "http://127.0.0.1:5001".into()
+}
+fn default_max_bytes() -> u64 {
+    10 * 1024 * 1024
+} // 10 MiB
+fn default_max_files() -> usize {
+    1500
+}
+fn default_max_file_bytes() -> u64 {
+    5 * 1024 * 1024
+} // 5 MiB
+fn default_ip_per_hour() -> u32 {
+    30
+}
+fn default_key_per_day() -> u32 {
+    300
+}

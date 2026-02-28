@@ -33,7 +33,7 @@ ulid = { version = "1", features = ["serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
 
 # --- Configuration ---
-config = { version = "0.15", features = ["toml", "env"] }
+config = { version = "0.15", features = ["toml"] }
 
 # --- Tracing / structured logging ---
 tracing = "0.1"
@@ -49,14 +49,14 @@ thiserror = "2"
 anyhow = "1"
 
 # --- Rate limiting (token bucket via tower-governor) ---
-tower_governor = { version = "0.4", features = ["axum"] }
+tower_governor = { version = "0.8", features = ["axum"] }
 
 # --- Time ---
 chrono = { version = "0.4", features = ["serde"] }
 
 # --- CID computation (UnixFS DAG-PB over SHA2-256 → base32 CIDv1) ---
 cid = "0.11"
-multihash = { version = "0.19", features = ["sha2"] }
+multihash = "0.19"
 sha2 = "0.10"
 
 # --- Misc utils ---

@@ -1,3 +1,4 @@
+pub mod foureverland;
 /// Async replication pipeline
 ///
 /// After local IPFS pin completes, we enqueue replication jobs for:
@@ -7,7 +8,6 @@
 /// Jobs are persisted in the DB so they survive restarts and can be retried.
 /// The background worker polls the queue and attempts each job independently.
 pub mod pinata;
-pub mod foureverland;
 
 use std::sync::Arc;
 use std::time::Duration;

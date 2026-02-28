@@ -6,7 +6,7 @@
 ///   - No wallet-signature requirement yet
 use axum::{
     extract::{FromRequestParts, Request},
-    http::{header, request::Parts, StatusCode},
+    http::{StatusCode, header, request::Parts},
     middleware::Next,
     response::Response,
 };
@@ -66,7 +66,6 @@ pub async fn auth_middleware(
 }
 
 /// Extractor that pulls `AuthContext` from request extensions.
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthContext
 where
     S: Send + Sync,

@@ -4,14 +4,11 @@ use std::sync::Arc;
 use axum::Router;
 use axum_prometheus::PrometheusMetricLayer;
 use tower_http::{
-    compression::CompressionLayer,
-    cors::CorsLayer,
-    normalize_path::NormalizePathLayer,
-    timeout::TimeoutLayer,
-    trace::TraceLayer,
+    compression::CompressionLayer, cors::CorsLayer, normalize_path::NormalizePathLayer,
+    timeout::TimeoutLayer, trace::TraceLayer,
 };
 use tracing::info;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 mod config;
 mod error;
@@ -44,7 +41,10 @@ async fn main() -> anyhow::Result<()> {
                 .with_current_span(true)
                 .with_span_list(false),
         )
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "ipfs_relay=info,tower_http=info".into()))
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "ipfs_relay=info,tower_http=info".into()),
+        )
         .init();
 
     // ── Config ───────────────────────────────────────────────────────────────

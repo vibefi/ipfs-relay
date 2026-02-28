@@ -107,18 +107,16 @@ impl KuboClient {
         }
 
         debug!(%root_cid, "kubo add complete");
-        Ok(AddResult { root_cid, file_cids })
+        Ok(AddResult {
+            root_cid,
+            file_cids,
+        })
     }
 
     /// Pin an already-imported CID (used after replication jobs)
     pub async fn pin_add(&self, cid: &str) -> Result<(), AppError> {
         let url = format!("{}/api/v0/pin/add?arg={cid}", self.base_url);
-        let resp = self
-            .http
-            .post(&url)
-            .send()
-            .await
-            .map_err(IpfsError::Http)?;
+        let resp = self.http.post(&url).send().await.map_err(IpfsError::Http)?;
 
         if !resp.status().is_success() {
             let msg = resp.text().await.unwrap_or_default();
