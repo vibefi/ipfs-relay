@@ -10,26 +10,13 @@ use tower_http::{
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-mod config;
-mod error;
-mod ipfs;
-mod middleware;
-mod models;
-mod pinning;
-mod routes;
-mod storage;
-mod validation;
-
-use crate::config::AppConfig;
-use crate::storage::db::Database;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<AppConfig>,
-    pub db: Database,
-    pub ipfs: Arc<ipfs::KuboClient>,
-    pub pinning: Arc<pinning::PinningService>,
-}
+use ipfs_relay::AppState;
+use ipfs_relay::config::AppConfig;
+use ipfs_relay::ipfs;
+use ipfs_relay::middleware::tracing::{make_span, on_response};
+use ipfs_relay::pinning;
+use ipfs_relay::routes;
+use ipfs_relay::storage::db::Database;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -87,8 +74,8 @@ async fn main() -> anyhow::Result<()> {
         )))
         .layer(
             TraceLayer::new_for_http()
-                .make_span_with(middleware::tracing::make_span)
-                .on_response(middleware::tracing::on_response),
+                .make_span_with(make_span)
+                .on_response(on_response),
         )
         .layer(prometheus_layer)
         .layer(CompressionLayer::new())

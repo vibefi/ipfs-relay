@@ -5,6 +5,10 @@ edition = "2024"
 description = "IPFS upload relay service for VibeFi bundles"
 license = "MIT"
 
+[lib]
+name = "ipfs_relay"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ipfs-relay"
 path = "src/main.rs"
@@ -12,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 # --- Web framework ---
 axum = { version = "0.8", features = ["multipart", "macros"] }
-axum-extra = { version = "0.10", features = ["typed-header"] }
+axum-extra = { version = "0.12", features = ["typed-header"] }
 tower = { version = "0.5", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "timeout", "trace", "request-id", "normalize-path", "compression-gzip"] }
 
@@ -41,7 +45,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"]
 tracing-bunyan-formatter = "0.3"
 
 # --- Metrics ---
-axum-prometheus = "0.7"
+axum-prometheus = "0.10"
 prometheus = { version = "0.13", features = ["process"] }
 
 # --- Error handling ---
@@ -66,7 +70,7 @@ base64 = "0.22"
 hex = "0.4"
 
 [dev-dependencies]
-axum-test = "16"
+axum-test = "19"
 tokio-test = "0.4"
 
 [profile.release]
