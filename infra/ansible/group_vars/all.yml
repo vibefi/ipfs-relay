@@ -17,6 +17,7 @@ base_packages:
   - curl
   - gnupg
   - git
+  - rsync
   - ufw
   - htop
   - vim

@@ -7,7 +7,7 @@
 # Or via the setup.sh wrapper:
 #   ./setup.sh <IP> [USER] [SSH_KEY_PATH]
 #
-# Targets: Debian 12 (Bookworm) / Debian 13 (Trixie) — fresh install
+# Targets: Debian/Ubuntu — fresh install
 
 - name: Provision VibeFi IPFS relay node
   hosts: relay
@@ -15,7 +15,8 @@
 
   vars:
     # Derived from group_vars/all.yml — override in inventory or with -e
-    docker_gpg_key_url: https://download.docker.com/linux/debian/gpg
+    docker_apt_os: "{{ ansible_distribution | lower }}"
+    docker_gpg_key_url: "https://download.docker.com/linux/{{ docker_apt_os }}/gpg"
     docker_gpg_key_path: /etc/apt/keyrings/docker.asc
     docker_packages:
       - docker-ce
@@ -35,6 +36,14 @@
     - name: Set timezone to UTC
       timezone:
         name: UTC
+
+    - name: Validate supported Linux distribution
+      assert:
+        that:
+          - ansible_distribution in ['Debian', 'Ubuntu']
+        fail_msg: >-
+          Unsupported distribution: {{ ansible_distribution }}.
+          This playbook currently supports Debian and Ubuntu.
 
     - name: Update apt cache and upgrade packages
       apt:
@@ -83,7 +92,7 @@
         repo: >-
           deb [arch={{ host_arch.stdout }}
           signed-by={{ docker_gpg_key_path }}]
-          https://download.docker.com/linux/debian
+          https://download.docker.com/linux/{{ docker_apt_os }}
           {{ debian_codename.stdout }} stable
         filename: docker
         state: present
@@ -141,13 +150,36 @@
         state: directory
         mode: "0755"
 
-    - name: Clone / update ipfs-relay repository
+    - name: Clone / update ipfs-relay repository (deploy_source=git)
       git:
         repo: "{{ app_repo }}"
         dest: "{{ app_dir }}"
         version: "{{ app_branch }}"
         force: true
-      register: git_result
+      when: (deploy_source | default('git')) == 'git'
+
+    - name: Sync local repository to server (deploy_source=local)
+      ansible.posix.synchronize:
+        src: "{{ local_project_dir }}/"
+        dest: "{{ app_dir }}/"
+        archive: true
+        delete: false
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=target"
+          - "--exclude=.env"
+          - "--exclude=infra/.env"
+      delegate_to: localhost
+      become: false
+      when: (deploy_source | default('git')) == 'local'
+
+    - name: Create relay data directory (SQLite)
+      file:
+        path: "{{ app_dir }}/data/relay"
+        state: directory
+        owner: "1001"
+        group: "1001"
+        mode: "0755"
 
     - name: Write .env file from inventory variables
       template:
@@ -186,22 +218,19 @@
 
     # ── Verification ───────────────────────────────────────────────────────────
 
-    - name: Wait for relay health endpoint (via Caddy on port 80)
-      uri:
-        # Port 8080 is not host-bound (expose: only). Check through Caddy,
-        # which handles the redirect to HTTPS — follow it so we get a real response.
-        url: http://localhost/health
-        follow_redirects: all
-        validate_certs: false
-        status_code: 200
-        timeout: 30
+    - name: Wait for relay health endpoint (inside relay container)
+      command: >-
+        docker compose -f {{ app_dir }}/infra/docker-compose.yml
+        exec -T relay curl -fsS http://localhost:8080/health
       retries: 10
       delay: 5
       register: health_result
+      changed_when: false
+      until: health_result.rc == 0
 
     - name: Print health response
       debug:
-        msg: "Relay is up: {{ health_result.json }}"
+        msg: "Relay is up: {{ health_result.stdout }}"
 
   # ── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -209,4 +238,3 @@
     - name: Reload systemd
       systemd:
         daemon_reload: true
-

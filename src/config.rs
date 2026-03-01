@@ -50,6 +50,22 @@ pub struct PinningConfig {
     pub foureverland_token: Option<String>,
 }
 
+impl PinningConfig {
+    pub fn pinata_jwt_value(&self) -> Option<&str> {
+        self.pinata_jwt
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+
+    pub fn foureverland_token_value(&self) -> Option<&str> {
+        self.foureverland_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct LimitsConfig {
     /// Max total upload bytes (spec: 10 MiB)

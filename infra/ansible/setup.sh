@@ -12,6 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 SERVER_IP="${1:?Usage: $0 <SERVER_IP> [USER] [SSH_KEY_PATH] [extra ansible args...]}"
@@ -51,11 +52,19 @@ if ! command -v ansible-playbook &>/dev/null; then
     exit 1
 fi
 
-# Install required Ansible collections if missing
-ansible-galaxy collection install community.docker --upgrade -q
+# Install required collection only if missing. Avoid forcing a Galaxy call on
+# every run, which can fail due to local netrc/credentials policy.
+if ! ansible-galaxy collection list community.docker | grep -q "^community.docker "; then
+    ansible-galaxy collection install community.docker --upgrade
+fi
 
 # ── Build inventory ───────────────────────────────────────────────────────────
-TMPINV="$(mktemp /tmp/ipfs-relay-inventory.XXXXXX.ini)"
+# GNU and BSD/macOS `mktemp` use different template rules.
+if TMPINV="$(mktemp "${TMPDIR:-/tmp}/ipfs-relay-inventory.XXXXXX" 2>/dev/null)"; then
+    :
+else
+    TMPINV="$(mktemp -t ipfs-relay-inventory)"
+fi
 trap 'rm -f "${TMPINV}"' EXIT
 
 cat > "${TMPINV}" <<INI
@@ -70,10 +79,20 @@ INI
 
 # ── Run playbook ──────────────────────────────────────────────────────────────
 echo "==> Provisioning ${ANSIBLE_USER}@${SERVER_IP} ..."
-ansible-playbook \
-    -i "${TMPINV}" \
-    "${SCRIPT_DIR}/playbook.yml" \
-    "${EXTRA_ARGS[@]}"
+if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
+    ansible-playbook \
+        -i "${TMPINV}" \
+        -e "deploy_source=local" \
+        -e "local_project_dir=${PROJECT_ROOT}" \
+        "${SCRIPT_DIR}/playbook.yml" \
+        "${EXTRA_ARGS[@]}"
+else
+    ansible-playbook \
+        -i "${TMPINV}" \
+        -e "deploy_source=local" \
+        -e "local_project_dir=${PROJECT_ROOT}" \
+        "${SCRIPT_DIR}/playbook.yml"
+fi
 
 echo ""
 echo "==> Done! Service should be running at https://ipfs.vibefi.dev"

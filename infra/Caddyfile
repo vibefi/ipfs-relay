@@ -1,9 +1,8 @@
 # ipfs.vibefi.dev — VibeFi IPFS upload relay
-# Caddy automatically provisions and renews TLS via Let's Encrypt.
-# Replace the domain if you're testing locally (e.g. use `:8080` for plain HTTP).
+# - Domain traffic uses HTTPS (automatic certs).
+# - Direct IP traffic stays on HTTP:80 for e2e testing without DNS/TLS.
 
-ipfs.vibefi.dev {
-    # Route all traffic to the relay service
+(relay_proxy_common) {
     reverse_proxy relay:8080 {
         # Pass real client IP for rate-limiting and audit logging
         header_up X-Forwarded-For {remote_host}
@@ -26,13 +25,28 @@ ipfs.vibefi.dev {
         level INFO
     }
 
-    # Tighten headers
+    # Baseline hardening headers
     header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         -Server
     }
 }
 
-# HTTP → HTTPS redirect is handled automatically by Caddy
+# Public domain: HTTPS with HSTS
+ipfs.vibefi.dev {
+    import relay_proxy_common
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+}
+
+# Plain HTTP entrypoint used for IP-based e2e tests.
+# Keep domain semantics: redirect domain host to HTTPS, but serve IP/other hosts over HTTP.
+http:// {
+    @relay_domain host ipfs.vibefi.dev
+    redir @relay_domain https://ipfs.vibefi.dev{uri} 308
+
+    import relay_proxy_common
+}

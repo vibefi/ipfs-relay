@@ -47,10 +47,10 @@ impl PinningService {
 
     fn enabled_targets(&self) -> Vec<ReplicationTarget> {
         let mut targets = Vec::new();
-        if self.config.pinata_jwt.is_some() {
+        if self.config.pinata_jwt_value().is_some() {
             targets.push(ReplicationTarget::Pinata);
         }
-        if self.config.foureverland_token.is_some() {
+        if self.config.foureverland_token_value().is_some() {
             targets.push(ReplicationTarget::Foureverland);
         }
         targets
@@ -103,16 +103,14 @@ impl PinningService {
             "pinata" => {
                 let jwt = self
                     .config
-                    .pinata_jwt
-                    .as_deref()
+                    .pinata_jwt_value()
                     .ok_or_else(|| anyhow::anyhow!("pinata_jwt not configured"))?;
                 pinata::pin_by_cid(jwt, cid).await
             }
             "4everland" => {
                 let token = self
                     .config
-                    .foureverland_token
-                    .as_deref()
+                    .foureverland_token_value()
                     .ok_or_else(|| anyhow::anyhow!("foureverland_token not configured"))?;
                 foureverland::pin_by_cid(token, cid).await
             }

@@ -14,8 +14,8 @@ services:
       VIBEFI_RELAY__IPFS__KUBO_API_URL: http://kubo:5001
       VIBEFI_RELAY__DATABASE__URL: sqlite:///data/ipfs-relay.db
     volumes:
-      - relay-data:/data
-    # Only reachable by Caddy on the internal network — not exposed to host
+      - ../data/relay:/data
+    # Internal service port (Caddy proxies to this on the docker network)
     expose:
       - "8080"
     depends_on:
@@ -83,7 +83,6 @@ networks:
     driver: bridge
 
 volumes:
-  relay-data:
   kubo-data:
   caddy-data:
   caddy-config:

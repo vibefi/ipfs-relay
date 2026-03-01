@@ -21,21 +21,65 @@ infra/
     └── templates/env.j2   # .env template
 ```
 
-## Quick deploy (fresh Debian server)
+## Deployment Steps
 
 ```bash
 cd infra/ansible
-./setup.sh <SERVER_IP> root ~/.ssh/your_key
+./setup.sh <SERVER_HOST_OR_IP> root ~/.ssh/your_key
 ```
 
-That's it. The playbook will:
+The playbook will:
 1. Update the OS and install base packages
 2. Install Docker CE + Compose plugin from Docker's official repo
 3. Configure UFW firewall (ports 22, 80, 443, 4001)
-4. Clone this repo to `/opt/ipfs-relay`
+4. Sync your current local checkout to `/opt/ipfs-relay` (default)
 5. Write `.env` from inventory variables
 6. Build the relay Docker image and start all three services
 7. Install + enable the systemd unit for auto-start on reboot
+
+Note: during provisioning, health is verified from inside the relay container
+so deploys succeed even before DNS/TLS for `ipfs.vibefi.dev` is live.
+
+If you prefer pulling from GitHub instead of syncing local files, pass:
+`-e deploy_source=git -e app_branch=<branch>`
+
+### Point Domain Before Running E2E Tests
+
+After provisioning succeeds:
+
+1. Create/Update DNS records so your domain points to the server.
+2. Ensure inbound ports `80` and `443` are reachable at the server/public firewall level.
+3. Wait for certificate issuance and HTTPS readiness.
+
+Verify:
+
+```bash
+curl -i https://<your-domain>/health
+```
+
+Expected result: `HTTP 200` with a JSON health body.
+
+If you use a proxy/CDN (for example Cloudflare), set the record to DNS-only until
+origin cert issuance completes, then re-enable proxy mode.
+
+### Run Integration Tests Against The Deployed Domain
+
+From repo root:
+
+```bash
+VIBEFI_RELAY_E2E_BASE_URL=https://<your-domain> \
+cargo test --test upload_e2e -- --ignored
+```
+
+Optional knobs:
+
+```bash
+# Enable Kubo CID/content verification checks in remote mode
+VIBEFI_RELAY_E2E_KUBO_API_URL=http://<kubo-host>:5001
+
+# Force invalid API-key auth assertion in remote mode
+VIBEFI_RELAY_E2E_EXPECT_API_KEY_AUTH=true
+```
 
 ## Manual operation
 

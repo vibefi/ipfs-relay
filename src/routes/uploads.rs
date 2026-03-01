@@ -206,13 +206,13 @@ fn hash_ip(ip: &str) -> String {
 
 fn build_replica_statuses(cfg: &crate::config::PinningConfig) -> Vec<ReplicaStatus> {
     let mut replicas = Vec::new();
-    if cfg.pinata_jwt.is_some() {
+    if cfg.pinata_jwt_value().is_some() {
         replicas.push(ReplicaStatus {
             target: "pinata".to_string(),
             status: "queued".to_string(),
         });
     }
-    if cfg.foureverland_token.is_some() {
+    if cfg.foureverland_token_value().is_some() {
         replicas.push(ReplicaStatus {
             target: "4everland".to_string(),
             status: "queued".to_string(),
