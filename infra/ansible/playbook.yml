@@ -173,14 +173,6 @@
       become: false
       when: (deploy_source | default('git')) == 'local'
 
-    - name: Create relay data directory (SQLite)
-      file:
-        path: "{{ app_dir }}/data/relay"
-        state: directory
-        owner: "1001"
-        group: "1001"
-        mode: "0755"
-
     - name: Write .env file from inventory variables
       template:
         src: templates/env.j2

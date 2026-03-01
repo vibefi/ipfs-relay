@@ -12,9 +12,6 @@ services:
     environment:
       APP_ENV: production
       VIBEFI_RELAY__IPFS__KUBO_API_URL: http://kubo:5001
-      VIBEFI_RELAY__DATABASE__URL: sqlite:///data/ipfs-relay.db
-    volumes:
-      - ../data/relay:/data
     # Internal service port (Caddy proxies to this on the docker network)
     expose:
       - "8080"

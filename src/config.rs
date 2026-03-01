@@ -10,7 +10,6 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     pub server: ServerConfig,
-    pub database: DatabaseConfig,
     pub ipfs: IpfsConfig,
     pub pinning: PinningConfig,
     pub limits: LimitsConfig,
@@ -27,15 +26,6 @@ pub struct ServerConfig {
     /// Overall request timeout in seconds (spec: 120s)
     #[serde(default = "default_timeout")]
     pub request_timeout_secs: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct DatabaseConfig {
-    #[serde(default = "default_db_url")]
-    pub url: String,
-    /// Days to retain upload metadata (spec: 90)
-    #[serde(default = "default_retention_days")]
-    pub retention_days: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -142,12 +132,6 @@ fn default_port() -> u16 {
 }
 fn default_timeout() -> u64 {
     120
-}
-fn default_db_url() -> String {
-    "sqlite://ipfs-relay.db".into()
-}
-fn default_retention_days() -> u32 {
-    90
 }
 fn default_kubo_url() -> String {
     "http://127.0.0.1:5001".into()

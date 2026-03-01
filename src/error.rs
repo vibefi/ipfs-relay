@@ -28,9 +28,6 @@ pub enum AppError {
     #[error("ipfs error: {0}")]
     Ipfs(#[from] IpfsError),
 
-    #[error("database error: {0}")]
-    Database(#[from] sqlx::Error),
-
     #[error("internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -65,9 +62,7 @@ impl AppError {
             Self::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
             Self::NotFound => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             Self::Ipfs(_) => (StatusCode::BAD_GATEWAY, "IPFS_ERROR"),
-            Self::Database(_) | Self::Internal(_) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
-            }
+            Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         }
     }
 }

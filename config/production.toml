@@ -3,11 +3,5 @@ host = "0.0.0.0"
 port = 8080
 request_timeout_secs = 120
 
-[database]
-# Use a real Postgres URL in production:
-# url = "postgres://user:pass@localhost/ipfs_relay"
-url = "sqlite:///data/ipfs-relay.db"
-retention_days = 90
-
 [limits]
 strict_manifest = false

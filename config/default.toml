@@ -3,16 +3,12 @@ host = "0.0.0.0"
 port = 8080
 request_timeout_secs = 120
 
-[database]
-url = "sqlite://ipfs-relay.db"
-retention_days = 90
-
 [ipfs]
 kubo_api_url = "http://127.0.0.1:5001"
 
 [pinning]
-# pinata_jwt = ""        # set via VIBEFI_RELAY_PINATA_JWT env var
-# foureverland_token = "" # set via VIBEFI_RELAY_4EVERLAND_TOKEN env var
+# pinata_jwt = ""        # set via VIBEFI_RELAY__PINNING__PINATA_JWT env var
+# foureverland_token = "" # set via VIBEFI_RELAY__PINNING__FOUREVERLAND_TOKEN env var
 
 [limits]
 max_upload_bytes = 10485760   # 10 MiB
@@ -25,4 +21,4 @@ per_ip_per_hour = 30
 per_key_per_day = 300
 
 [auth]
-# api_keys = "key1,key2"  # set via VIBEFI_RELAY_AUTH_API_KEYS env var
+# api_keys = "key1,key2"  # set via VIBEFI_RELAY__AUTH__API_KEYS env var

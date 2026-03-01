@@ -16,7 +16,6 @@ use ipfs_relay::ipfs;
 use ipfs_relay::middleware::tracing::{make_span, on_response};
 use ipfs_relay::pinning;
 use ipfs_relay::routes;
-use ipfs_relay::storage::db::Database;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -38,25 +37,15 @@ async fn main() -> anyhow::Result<()> {
     let config = Arc::new(AppConfig::load()?);
     info!(host = %config.server.host, port = config.server.port, "starting ipfs-relay");
 
-    // ── Database ─────────────────────────────────────────────────────────────
-    let db = Database::connect(&config.database.url).await?;
-    db.migrate().await?;
-
     // ── IPFS client ──────────────────────────────────────────────────────────
     let ipfs_client = Arc::new(ipfs::KuboClient::new(&config.ipfs.kubo_api_url));
 
     // ── Pinning service ──────────────────────────────────────────────────────
-    let pinning_svc = Arc::new(pinning::PinningService::new(
-        db.clone(),
-        Arc::clone(&ipfs_client),
-        config.pinning.clone(),
-    ));
-    pinning_svc.clone().start_worker();
+    let pinning_svc = Arc::new(pinning::PinningService::new(config.pinning.clone()));
 
     // ── App state ────────────────────────────────────────────────────────────
     let state = AppState {
         config: Arc::clone(&config),
-        db,
         ipfs: ipfs_client,
         pinning: pinning_svc,
     };

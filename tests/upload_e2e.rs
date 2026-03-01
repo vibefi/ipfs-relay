@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
+use axum::routing::post;
 use axum::Router;
 use reqwest::header::AUTHORIZATION;
 use reqwest::multipart::{Form, Part};
@@ -32,7 +32,6 @@ use ipfs_relay::ipfs::KuboClient;
 use ipfs_relay::middleware::auth::auth_middleware;
 use ipfs_relay::pinning::PinningService;
 use ipfs_relay::routes::uploads;
-use ipfs_relay::storage::db::Database;
 use ipfs_relay::AppState;
 
 #[derive(Clone)]
@@ -108,18 +107,11 @@ async fn test_client() -> RelayClient {
     let kubo_url = std::env::var("VIBEFI_RELAY__IPFS__KUBO_API_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:5001".to_string());
 
-    let db_path = std::env::temp_dir().join(format!("ipfs_relay_test_{}.db", ulid::Ulid::new()));
-    let db_url = format!("sqlite:{}", db_path.display());
-
     let config = AppConfig {
         server: ServerConfig {
             host: "127.0.0.1".to_string(),
             port: 0,
             request_timeout_secs: 120,
-        },
-        database: DatabaseConfig {
-            url: db_url,
-            retention_days: 90,
         },
         ipfs: IpfsConfig {
             kubo_api_url: kubo_url,
@@ -143,21 +135,11 @@ async fn test_client() -> RelayClient {
         },
     };
 
-    let db = Database::connect(&config.database.url)
-        .await
-        .expect("db connect");
-    db.migrate().await.expect("db migrate");
-
     let ipfs_client = Arc::new(KuboClient::new(&config.ipfs.kubo_api_url));
-    let pinning_svc = Arc::new(PinningService::new(
-        db.clone(),
-        Arc::clone(&ipfs_client),
-        config.pinning.clone(),
-    ));
+    let pinning_svc = Arc::new(PinningService::new(config.pinning.clone()));
 
     let state = AppState {
         config: Arc::new(config),
-        db,
         ipfs: ipfs_client,
         pinning: pinning_svc,
     };
@@ -165,7 +147,6 @@ async fn test_client() -> RelayClient {
     // Router without GovernorLayer to avoid rate-limit flakiness in local tests.
     let app = Router::new()
         .route("/v1/uploads", post(uploads::create_upload))
-        .route("/v1/uploads/{upload_id}", get(uploads::get_upload))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024 + 64 * 1024))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -224,17 +205,6 @@ impl RelayClient {
         }
 
         let resp = req.send().await.expect("POST /v1/uploads request failed");
-        parse_response(resp).await
-    }
-
-    async fn get_json(&self, path: &str) -> HttpResponse {
-        let resp = self
-            .http
-            .get(format!("{}{}", self.base_url, path))
-            .header("X-Forwarded-For", "203.0.113.10")
-            .send()
-            .await
-            .expect("GET request failed");
         parse_response(resp).await
     }
 }
@@ -381,34 +351,6 @@ async fn upload_multi_file_bundle_returns_201() {
     assert!(body["uploadId"].as_str().unwrap().starts_with("upl_"));
     assert!(!body["rootCid"].as_str().unwrap().is_empty());
     assert_eq!(body["fileCount"].as_u64().unwrap(), 5);
-}
-
-#[tokio::test]
-#[ignore]
-async fn upload_then_get_status() {
-    let relay = test_client().await;
-
-    let post_response = relay.post_upload(valid_bundle(), None).await;
-    assert_eq!(post_response.status, StatusCode::CREATED);
-
-    let post_body = post_response.body;
-    let upload_id = post_body["uploadId"].as_str().unwrap();
-
-    let get_response = relay.get_json(&format!("/v1/uploads/{upload_id}")).await;
-    assert_eq!(get_response.status, StatusCode::OK);
-
-    let get_body = get_response.body;
-    assert_eq!(get_body["uploadId"].as_str().unwrap(), upload_id);
-    assert_eq!(
-        get_body["rootCid"].as_str().unwrap(),
-        post_body["rootCid"].as_str().unwrap()
-    );
-
-    let status = get_body["status"].as_str().unwrap();
-    assert!(
-        ["pending", "completed", "partial"].contains(&status),
-        "unexpected status: {status}"
-    );
 }
 
 #[tokio::test]
@@ -571,14 +513,4 @@ async fn upload_invalid_api_key_returns_401() {
     let response = relay.post_upload(valid_bundle(), Some("wrong-key")).await;
     assert_eq!(response.status, StatusCode::UNAUTHORIZED);
     assert_eq!(response.body["error"]["code"].as_str(), Some("UNAUTHORIZED"));
-}
-
-#[tokio::test]
-#[ignore]
-async fn get_nonexistent_upload_returns_404() {
-    let relay = test_client().await;
-
-    let response = relay.get_json("/v1/uploads/upl_nonexistent").await;
-    assert_eq!(response.status, StatusCode::NOT_FOUND);
-    assert_eq!(response.body["error"]["code"].as_str(), Some("NOT_FOUND"));
 }

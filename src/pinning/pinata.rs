@@ -1,10 +1,14 @@
 /// Pinata pinByCID API
 /// Docs: https://docs.pinata.cloud/api-reference/endpoint/pin-by-cid
+use std::time::Duration;
+
 use serde_json::json;
 use tracing::debug;
 
 pub async fn pin_by_cid(jwt: &str, cid: &str) -> Result<(), anyhow::Error> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
     let body = json!({
         "hashToPin": cid,
         "pinataOptions": { "cidVersion": 1 }

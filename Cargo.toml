@@ -27,9 +27,6 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# --- Database (SQLite for embedded simplicity; swap DSN to postgres:// for prod) ---
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "postgres", "macros", "chrono", "uuid"] }
-
 # --- ID generation ---
 ulid = { version = "1", features = ["serde"] }
 
@@ -54,9 +51,6 @@ anyhow = "1"
 
 # --- Rate limiting (token bucket via tower-governor) ---
 tower_governor = { version = "0.8", features = ["axum"] }
-
-# --- Time ---
-chrono = { version = "0.4", features = ["serde"] }
 
 # --- CID computation (UnixFS DAG-PB over SHA2-256 → base32 CIDv1) ---
 cid = "0.11"

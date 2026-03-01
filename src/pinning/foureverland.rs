@@ -1,10 +1,14 @@
 /// 4EVERLAND pinning API
 /// 4EVERLAND exposes a Pinata-compatible pinning API endpoint.
+use std::time::Duration;
+
 use serde_json::json;
 use tracing::debug;
 
 pub async fn pin_by_cid(token: &str, cid: &str) -> Result<(), anyhow::Error> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
     let body = json!({
         "cid": cid,
         "name": cid
