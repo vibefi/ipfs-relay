@@ -6,6 +6,8 @@ use axum::{
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::middleware::request_id::current_request_id;
+
 /// Application-level error type.
 /// All variants produce structured JSON error responses.
 #[derive(Debug, thiserror::Error)]
@@ -18,9 +20,6 @@ pub enum AppError {
 
     #[error("rate limit exceeded")]
     RateLimitExceeded,
-
-    #[error("unauthorized: {0}")]
-    Unauthorized(String),
 
     #[error("not found")]
     NotFound,
@@ -59,7 +58,6 @@ impl AppError {
             Self::InvalidPackage(_) => (StatusCode::BAD_REQUEST, "INVALID_PACKAGE"),
             Self::PayloadTooLarge(_) => (StatusCode::PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE"),
             Self::RateLimitExceeded => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED"),
-            Self::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
             Self::NotFound => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             Self::Ipfs(_) => (StatusCode::BAD_GATEWAY, "IPFS_ERROR"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
@@ -79,7 +77,7 @@ impl IntoResponse for AppError {
 
         let body = ErrorBody {
             error: ErrorDetail { code, message },
-            request_id: Uuid::new_v4().to_string(),
+            request_id: current_request_id().unwrap_or_else(|| format!("req_{}", Uuid::new_v4())),
         };
 
         (status, Json(body)).into_response()

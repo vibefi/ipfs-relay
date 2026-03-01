@@ -2,13 +2,18 @@
 ///
 /// Produces structured log lines:
 ///   { "requestId": "...", "method": "POST", "path": "/v1/uploads",
-///     "statusCode": 201, "durationMs": 342, "authMode": "anonymous" }
+///     "statusCode": 201, "durationMs": 342 }
 use axum::http::{Request, Response};
 use tracing::{Level, Span};
 use uuid::Uuid;
 
 pub fn make_span<B>(request: &Request<B>) -> Span {
-    let request_id = Uuid::new_v4().to_string();
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("req_{}", Uuid::new_v4()));
     tracing::span!(
         Level::INFO,
         "http_request",

@@ -17,8 +17,5 @@ max_single_file_bytes = 5242880 # 5 MiB
 strict_manifest = false
 
 [rate_limit]
-per_ip_per_hour = 30
-per_key_per_day = 300
-
-[auth]
-# api_keys = "key1,key2"  # set via VIBEFI_RELAY__AUTH__API_KEYS env var
+per_ip_per_minute = 1
+per_ip_per_hour = 15

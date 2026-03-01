@@ -1,7 +1,7 @@
 # IPFS Upload Relay Spec (`ipfs.vibefi.dev`)
 
 Status: Draft  
-Last Updated: 2026-02-27  
+Last Updated: 2026-03-01  
 Owner: VibeFi protocol/backend
 
 ## 1. Purpose
@@ -42,7 +42,6 @@ Out of scope:
 Headers:
 
 - `Content-Type: multipart/form-data`
-- `Authorization: Bearer <api-key>` optional for now.
 
 Multipart fields:
 
@@ -83,23 +82,6 @@ Error response (`4xx/5xx`):
 }
 ```
 
-### `GET /v1/uploads/{uploadId}`
-
-Returns processing state and replication status.
-
-```json
-{
-  "uploadId": "upl_01J...",
-  "rootCid": "bafy...",
-  "status": "completed",
-  "replication": [
-    { "target": "local", "status": "pinned" },
-    { "target": "pinata", "status": "pinned" },
-    { "target": "4everland", "status": "pinned" }
-  ]
-}
-```
-
 ## 5. Package Sanity Checks
 
 Validation rules:
@@ -121,19 +103,11 @@ If any check fails, return `400 INVALID_PACKAGE`.
 Current requirement:
 
 - Signature is not required today.
-
-Supported modes now:
-
-1. Anonymous uploads with strict quotas.
-2. Optional API key uploads (higher quotas for trusted callers).
+- API is open (no API-key gate).
 
 Future mode:
 
 - Wallet-signature auth can be added later without changing endpoint shape.
-
-Policy:
-
-- Keep unsigned mode enabled until protocol decides to enforce signed uploads.
 
 ## 7. Abuse Controls
 
@@ -146,8 +120,8 @@ Hard limits (initial defaults):
 
 Rate limits (initial defaults):
 
-- Per IP: `30` uploads/hour
-- Per API key: `300` uploads/day
+- Per IP: `1` upload/minute
+- Per IP: `15` uploads/hour
 - Burst handling via token bucket.
 
 Operational protections:
@@ -180,7 +154,6 @@ Persist minimal metadata per upload:
 - `uploadId`
 - `rootCid`
 - `sourceIp` (hashed/truncated per policy)
-- `authMode` (`anonymous` or `apiKey`)
 - `bytes`, `fileCount`
 - `createdAt`
 - `replicationStatus`
@@ -194,12 +167,12 @@ Retention:
 
 Structured logs:
 
-- `requestId`, `uploadId`, `authMode`, `statusCode`, `durationMs`, `bytes`, `rootCid`.
+- `requestId`, `uploadId`, `statusCode`, `durationMs`, `bytes`, `rootCid`.
 - Never log bearer tokens, signatures, or full raw multipart bodies.
 
 Metrics:
 
-- `relay_upload_requests_total{auth_mode,status}`
+- `relay_upload_requests_total{status}`
 - `relay_upload_bytes_total`
 - `relay_upload_duration_seconds`
 - `relay_replication_jobs_total{target,status}`
@@ -227,12 +200,11 @@ Runtime components:
 
 Configuration (env):
 
-- `VIBEFI_RELAY_API_KEYS=...`
-- `VIBEFI_RELAY_MAX_UPLOAD_BYTES`
-- `VIBEFI_RELAY_MAX_FILE_COUNT`
-- `VIBEFI_RELAY_PINATA_JWT`
-- `VIBEFI_RELAY_4EVERLAND_TOKEN`
-- `VIBEFI_RELAY_KUBO_API_URL`
+- `VIBEFI_RELAY__LIMITS__MAX_UPLOAD_BYTES`
+- `VIBEFI_RELAY__LIMITS__MAX_FILE_COUNT`
+- `VIBEFI_RELAY__PINNING__PINATA_JWT`
+- `VIBEFI_RELAY__PINNING__FOUREVERLAND_TOKEN`
+- `VIBEFI_RELAY__IPFS__KUBO_API_URL`
 
 ## 12. Client Integration Notes
 
@@ -255,7 +227,7 @@ Client expectation:
 
 ## 14. Open Decisions
 
-1. Final anonymous/API-key quota values.
+1. Final anonymous quota values.
 2. Whether to enable strict rejection of files not listed in `manifest.files`.
 3. Timeline for introducing wallet-signature auth.
 4. Whether CLI publish should also default to protocol relay once stable.

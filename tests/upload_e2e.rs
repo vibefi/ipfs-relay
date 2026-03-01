@@ -11,28 +11,21 @@
 //! - VIBEFI_RELAY_E2E_KUBO_API_URL=http://host:5001
 //!     Required only for tests that directly verify CID/file retrieval on Kubo.
 //!     If unset in remote mode, Kubo-specific checks are skipped.
-//! - VIBEFI_RELAY_E2E_API_KEY=<key>
-//!     API key used by `upload_with_api_key_succeeds` (default: test-key).
-//! - VIBEFI_RELAY_E2E_EXPECT_API_KEY_AUTH=true|false
-//!     Controls whether `upload_invalid_api_key_returns_401` should run.
-//!     Default: true for local mode, false for remote mode.
 
 use std::sync::Arc;
 
+use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
-use axum::Router;
-use reqwest::header::AUTHORIZATION;
-use reqwest::multipart::{Form, Part};
 use reqwest::StatusCode;
+use reqwest::multipart::{Form, Part};
 use serde_json::json;
 
+use ipfs_relay::AppState;
 use ipfs_relay::config::*;
 use ipfs_relay::ipfs::KuboClient;
-use ipfs_relay::middleware::auth::auth_middleware;
 use ipfs_relay::pinning::PinningService;
 use ipfs_relay::routes::uploads;
-use ipfs_relay::AppState;
 
 #[derive(Clone)]
 struct UploadFileSpec {
@@ -54,24 +47,6 @@ struct HttpResponse {
 
 fn remote_mode() -> bool {
     std::env::var("VIBEFI_RELAY_E2E_BASE_URL").is_ok()
-}
-
-fn bool_env(name: &str, default: bool) -> bool {
-    match std::env::var(name) {
-        Ok(v) => matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
-        Err(_) => default,
-    }
-}
-
-fn expect_api_key_auth_enforcement() -> bool {
-    bool_env(
-        "VIBEFI_RELAY_E2E_EXPECT_API_KEY_AUTH",
-        !remote_mode(),
-    )
-}
-
-fn success_api_key() -> String {
-    std::env::var("VIBEFI_RELAY_E2E_API_KEY").unwrap_or_else(|_| "test-key".to_string())
 }
 
 fn kubo_api_url() -> Option<String> {
@@ -127,11 +102,8 @@ async fn test_client() -> RelayClient {
             strict_manifest: false,
         },
         rate_limit: RateLimitConfig {
-            per_ip_per_hour: 30,
-            per_key_per_day: 300,
-        },
-        auth: AuthConfig {
-            api_keys: Some("test-key".to_string()),
+            per_ip_per_minute: 1,
+            per_ip_per_hour: 15,
         },
     };
 
@@ -148,10 +120,6 @@ async fn test_client() -> RelayClient {
     let app = Router::new()
         .route("/v1/uploads", post(uploads::create_upload))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024 + 64 * 1024))
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            auth_middleware,
-        ))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -187,22 +155,18 @@ fn multipart_form(files: &[UploadFileSpec]) -> Form {
 async fn parse_response(resp: reqwest::Response) -> HttpResponse {
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
-    let body = serde_json::from_str::<serde_json::Value>(&text)
-        .unwrap_or_else(|_| json!({"raw": text}));
+    let body =
+        serde_json::from_str::<serde_json::Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
     HttpResponse { status, body }
 }
 
 impl RelayClient {
-    async fn post_upload(&self, files: Vec<UploadFileSpec>, api_key: Option<&str>) -> HttpResponse {
-        let mut req = self
+    async fn post_upload(&self, files: Vec<UploadFileSpec>) -> HttpResponse {
+        let req = self
             .http
             .post(format!("{}/v1/uploads", self.base_url))
             .header("X-Forwarded-For", "203.0.113.10")
             .multipart(multipart_form(&files));
-
-        if let Some(key) = api_key {
-            req = req.header(AUTHORIZATION, format!("Bearer {key}"));
-        }
 
         let resp = req.send().await.expect("POST /v1/uploads request failed");
         parse_response(resp).await
@@ -322,7 +286,7 @@ async fn fetch_file_from_kubo(root_cid: &str, path: &str) -> Vec<u8> {
 #[ignore]
 async fn upload_valid_bundle_returns_201() {
     let relay = test_client().await;
-    let response = relay.post_upload(valid_bundle(), None).await;
+    let response = relay.post_upload(valid_bundle()).await;
 
     assert_eq!(response.status, StatusCode::CREATED);
 
@@ -343,7 +307,7 @@ async fn upload_valid_bundle_returns_201() {
 #[ignore]
 async fn upload_multi_file_bundle_returns_201() {
     let relay = test_client().await;
-    let response = relay.post_upload(multi_file_bundle(), None).await;
+    let response = relay.post_upload(multi_file_bundle()).await;
 
     assert_eq!(response.status, StatusCode::CREATED);
 
@@ -355,23 +319,13 @@ async fn upload_multi_file_bundle_returns_201() {
 
 #[tokio::test]
 #[ignore]
-async fn upload_with_api_key_succeeds() {
-    let relay = test_client().await;
-    let key = success_api_key();
-
-    let response = relay.post_upload(valid_bundle(), Some(&key)).await;
-    assert_eq!(response.status, StatusCode::CREATED);
-}
-
-#[tokio::test]
-#[ignore]
 async fn deterministic_cid_for_same_content() {
     let relay = test_client().await;
 
-    let response1 = relay.post_upload(valid_bundle(), None).await;
+    let response1 = relay.post_upload(valid_bundle()).await;
     assert_eq!(response1.status, StatusCode::CREATED);
 
-    let response2 = relay.post_upload(valid_bundle(), None).await;
+    let response2 = relay.post_upload(valid_bundle()).await;
     assert_eq!(response2.status, StatusCode::CREATED);
 
     assert_eq!(
@@ -397,7 +351,7 @@ async fn upload_then_download_from_ipfs() {
     let app_js = b"console.log('app');";
     let style_css = b"body { margin: 0; }";
 
-    let response = relay.post_upload(multi_file_bundle(), None).await;
+    let response = relay.post_upload(multi_file_bundle()).await;
     assert_eq!(response.status, StatusCode::CREATED);
 
     let root_cid = response.body["rootCid"].as_str().unwrap().to_string();
@@ -435,9 +389,12 @@ async fn upload_missing_manifest_returns_400() {
         },
     ];
 
-    let response = relay.post_upload(form, None).await;
+    let response = relay.post_upload(form).await;
     assert_eq!(response.status, StatusCode::BAD_REQUEST);
-    assert_eq!(response.body["error"]["code"].as_str(), Some("INVALID_PACKAGE"));
+    assert_eq!(
+        response.body["error"]["code"].as_str(),
+        Some("INVALID_PACKAGE")
+    );
 }
 
 #[tokio::test]
@@ -468,9 +425,12 @@ async fn upload_missing_vibefi_json_returns_400() {
         },
     ];
 
-    let response = relay.post_upload(form, None).await;
+    let response = relay.post_upload(form).await;
     assert_eq!(response.status, StatusCode::BAD_REQUEST);
-    assert_eq!(response.body["error"]["code"].as_str(), Some("INVALID_PACKAGE"));
+    assert_eq!(
+        response.body["error"]["code"].as_str(),
+        Some("INVALID_PACKAGE")
+    );
 }
 
 #[tokio::test]
@@ -493,24 +453,10 @@ async fn upload_path_traversal_returns_400() {
         },
     ];
 
-    let response = relay.post_upload(form, None).await;
+    let response = relay.post_upload(form).await;
     assert_eq!(response.status, StatusCode::BAD_REQUEST);
-    assert_eq!(response.body["error"]["code"].as_str(), Some("INVALID_PACKAGE"));
-}
-
-#[tokio::test]
-#[ignore]
-async fn upload_invalid_api_key_returns_401() {
-    if !expect_api_key_auth_enforcement() {
-        eprintln!(
-            "Skipping invalid-key auth check: set VIBEFI_RELAY_E2E_EXPECT_API_KEY_AUTH=true to enforce"
-        );
-        return;
-    }
-
-    let relay = test_client().await;
-
-    let response = relay.post_upload(valid_bundle(), Some("wrong-key")).await;
-    assert_eq!(response.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(response.body["error"]["code"].as_str(), Some("UNAUTHORIZED"));
+    assert_eq!(
+        response.body["error"]["code"].as_str(),
+        Some("INVALID_PACKAGE")
+    );
 }

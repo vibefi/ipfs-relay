@@ -7,7 +7,6 @@ use std::time::Duration;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    middleware,
     routing::{get, post},
 };
 use axum_prometheus::metrics_exporter_prometheus::PrometheusHandle;
@@ -16,27 +15,45 @@ use tower_governor::{
 };
 
 use crate::AppState;
-use crate::middleware::auth::auth_middleware;
 
-/// `/v1/*` routes with auth middleware, rate limiting, and body size cap.
+/// `/v1/*` routes with rate limiting and body size cap.
 pub fn api_router(state: AppState) -> Router {
-    // IP-based token bucket derived from config (default: 30 uploads/hour).
-    // per_millisecond sets the replenishment interval per token.
+    // IP-based token buckets:
+    // - 1 request per minute (burst 1)
+    // - 15 requests per hour (burst 15)
+    let per_ip_per_minute = state.config.rate_limit.per_ip_per_minute;
     let per_ip_per_hour = state.config.rate_limit.per_ip_per_hour;
-    let replenish_ms = (3_600_000u64).checked_div(per_ip_per_hour as u64).unwrap_or(3_600_000);
-    let governor_conf = GovernorConfigBuilder::default()
-        .per_millisecond(replenish_ms)
-        .burst_size(5)
+    let replenish_minute_ms = (60_000u64)
+        .checked_div(per_ip_per_minute as u64)
+        .unwrap_or(60_000)
+        .max(1);
+    let replenish_hour_ms = (3_600_000u64)
+        .checked_div(per_ip_per_hour as u64)
+        .unwrap_or(3_600_000)
+        .max(1);
+
+    let minute_conf = GovernorConfigBuilder::default()
+        .per_millisecond(replenish_minute_ms)
+        .burst_size(1)
+        .key_extractor(SmartIpKeyExtractor)
+        .finish()
+        .unwrap();
+
+    let hour_conf = GovernorConfigBuilder::default()
+        .per_millisecond(replenish_hour_ms)
+        .burst_size(15)
         .key_extractor(SmartIpKeyExtractor)
         .finish()
         .unwrap();
 
     // Periodically evict expired rate-limit entries to keep memory bounded.
-    let limiter = Arc::clone(governor_conf.limiter());
+    let minute_limiter = Arc::clone(minute_conf.limiter());
+    let hour_limiter = Arc::clone(hour_conf.limiter());
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            limiter.retain_recent();
+            minute_limiter.retain_recent();
+            hour_limiter.retain_recent();
         }
     });
 
@@ -46,11 +63,8 @@ pub fn api_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/uploads", post(uploads::create_upload))
         .layer(DefaultBodyLimit::max(body_limit))
-        .layer(GovernorLayer::new(governor_conf))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth_middleware,
-        ))
+        .layer(GovernorLayer::new(hour_conf))
+        .layer(GovernorLayer::new(minute_conf))
         .with_state(state)
 }
 

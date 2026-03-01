@@ -15,7 +15,6 @@ use uuid::Uuid;
 use crate::{
     AppState,
     error::{AppError, AppResult},
-    middleware::auth::AuthContext,
     models::{PinningSummary, ReplicaStatus, UploadResponse, UploadedFile, ValidationSummary},
     validation::validate_vibefi_package,
 };
@@ -28,11 +27,14 @@ use crate::{
 pub async fn create_upload(
     State(state): State<AppState>,
     headers: HeaderMap,
-    auth: AuthContext,
     mut multipart: Multipart,
 ) -> AppResult<(StatusCode, Json<UploadResponse>)> {
     let upload_id = format!("upl_{}", Ulid::new());
-    let request_id = format!("req_{}", Uuid::new_v4());
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+        .unwrap_or_else(|| format!("req_{}", Uuid::new_v4()));
 
     tracing::Span::current().record("upload_id", &upload_id);
 
@@ -95,7 +97,6 @@ pub async fn create_upload(
         root_cid = %root_cid,
         bytes = total_bytes,
         file_count = files.len(),
-        auth_mode = %auth.mode,
         source_ip_hash = %source_ip_hash,
         "upload accepted"
     );

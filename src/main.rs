@@ -1,11 +1,15 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{Router, middleware};
 use axum_prometheus::PrometheusMetricLayer;
 use tower_http::{
-    compression::CompressionLayer, cors::CorsLayer, normalize_path::NormalizePathLayer,
-    timeout::TimeoutLayer, trace::TraceLayer,
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    normalize_path::NormalizePathLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    timeout::TimeoutLayer,
+    trace::TraceLayer,
 };
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -13,6 +17,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use ipfs_relay::AppState;
 use ipfs_relay::config::AppConfig;
 use ipfs_relay::ipfs;
+use ipfs_relay::middleware::request_id::request_id_context_middleware;
 use ipfs_relay::middleware::tracing::{make_span, on_response};
 use ipfs_relay::pinning;
 use ipfs_relay::routes;
@@ -68,7 +73,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .layer(prometheus_layer)
         .layer(CompressionLayer::new())
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(request_id_context_middleware))
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+        .layer(PropagateRequestIdLayer::x_request_id());
 
     // ── Listen ───────────────────────────────────────────────────────────────
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port).parse()?;

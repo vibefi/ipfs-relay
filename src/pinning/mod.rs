@@ -30,7 +30,10 @@ impl PinningService {
         if let Some(token) = self.config.foureverland_token_value().map(String::from) {
             let cid = root_cid;
             tokio::spawn(async move {
-                retry_pin("4everland", &cid, 3, || foureverland::pin_by_cid(&token, &cid)).await;
+                retry_pin("4everland", &cid, 3, || {
+                    foureverland::pin_by_cid(&token, &cid)
+                })
+                .await;
             });
         }
     }

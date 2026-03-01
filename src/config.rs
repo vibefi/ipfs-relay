@@ -14,7 +14,6 @@ pub struct AppConfig {
     pub pinning: PinningConfig,
     pub limits: LimitsConfig,
     pub rate_limit: RateLimitConfig,
-    pub auth: AuthConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -74,18 +73,12 @@ pub struct LimitsConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RateLimitConfig {
+    /// Uploads per minute per IP
+    #[serde(default = "default_ip_per_minute")]
+    pub per_ip_per_minute: u32,
     /// Uploads per hour per IP (anonymous)
     #[serde(default = "default_ip_per_hour")]
     pub per_ip_per_hour: u32,
-    /// Uploads per day per API key
-    #[serde(default = "default_key_per_day")]
-    pub per_key_per_day: u32,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct AuthConfig {
-    /// Comma-separated list of valid API keys; empty = no keys configured
-    pub api_keys: Option<String>,
 }
 
 impl AppConfig {
@@ -108,19 +101,6 @@ impl AppConfig {
             .build()?;
 
         Ok(cfg.try_deserialize()?)
-    }
-
-    /// Returns the set of valid API keys parsed from the config.
-    pub fn api_keys(&self) -> Vec<String> {
-        self.auth
-            .api_keys
-            .as_deref()
-            .unwrap_or("")
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .collect()
     }
 }
 
@@ -145,9 +125,9 @@ fn default_max_files() -> usize {
 fn default_max_file_bytes() -> u64 {
     5 * 1024 * 1024
 } // 5 MiB
-fn default_ip_per_hour() -> u32 {
-    30
+fn default_ip_per_minute() -> u32 {
+    1
 }
-fn default_key_per_day() -> u32 {
-    300
+fn default_ip_per_hour() -> u32 {
+    15
 }

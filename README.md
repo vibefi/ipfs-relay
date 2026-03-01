@@ -10,10 +10,9 @@ Lets users publish VibeFi bundles to IPFS without creating a Pinata/4EVERLAND ac
 |---|---|
 | Framework | [Axum 0.8](https://github.com/tokio-rs/axum) |
 | Runtime | Tokio |
-| DB | SQLite (dev) / PostgreSQL (prod) via SQLx |
 | Tracing | `tracing` + JSON structured logs |
 | Metrics | `axum-prometheus` (Prometheus scrape at `/metrics`) |
-| Rate limiting | `tower_governor` (token bucket) |
+| Rate limiting | `tower_governor` (per-IP `1/min` and `15/hour`) |
 | IPFS | Kubo HTTP API (`/api/v0/add`) |
 | Replication | Pinata + 4EVERLAND (async background worker) |
 
@@ -22,7 +21,6 @@ Lets users publish VibeFi bundles to IPFS without creating a Pinata/4EVERLAND ac
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/v1/uploads` | Upload a VibeFi bundle (multipart) |
-| `GET` | `/v1/uploads/{uploadId}` | Get upload + replication status |
 | `GET` | `/health` | Health check |
 | `GET` | `/metrics` | Prometheus metrics |
 
@@ -42,10 +40,11 @@ prefixed with `VIBEFI_RELAY_`. See `.env.example` for the full list.
 Key env vars:
 
 ```
-VIBEFI_RELAY_IPFS_KUBO_API_URL=http://127.0.0.1:5001
-VIBEFI_RELAY_PINNING_PINATA_JWT=<jwt>
-VIBEFI_RELAY_PINNING_FOUREVERLAND_TOKEN=<token>
-VIBEFI_RELAY_AUTH_API_KEYS=key1,key2
+VIBEFI_RELAY__IPFS__KUBO_API_URL=http://127.0.0.1:5001
+VIBEFI_RELAY__PINNING__PINATA_JWT=<jwt>
+VIBEFI_RELAY__PINNING__FOUREVERLAND_TOKEN=<token>
+VIBEFI_RELAY__RATE_LIMIT__PER_IP_PER_MINUTE=1
+VIBEFI_RELAY__RATE_LIMIT__PER_IP_PER_HOUR=15
 ```
 
 ## Package validation rules
@@ -58,7 +57,7 @@ VIBEFI_RELAY_AUTH_API_KEYS=key1,key2
 6. `vibefi.json` present at bundle root
 7. `entry` path from manifest exists
 8. No absolute paths, `..`, or duplicate logical paths
-9. (Optional) `VIBEFI_RELAY_LIMITS_STRICT_MANIFEST=true` rejects files not listed in manifest
+9. (Optional) `VIBEFI_RELAY__LIMITS__STRICT_MANIFEST=true` rejects files not listed in manifest
 
 ## Development
 

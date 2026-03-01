@@ -76,9 +76,6 @@ Optional knobs:
 ```bash
 # Enable Kubo CID/content verification checks in remote mode
 VIBEFI_RELAY_E2E_KUBO_API_URL=http://<kubo-host>:5001
-
-# Force invalid API-key auth assertion in remote mode
-VIBEFI_RELAY_E2E_EXPECT_API_KEY_AUTH=true
 ```
 
 ## Manual operation

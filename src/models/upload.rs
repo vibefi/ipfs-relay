@@ -1,21 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-/// Auth mode for an upload request
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum AuthMode {
-    Anonymous,
-    ApiKey,
-}
-
-impl std::fmt::Display for AuthMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Anonymous => write!(f, "anonymous"),
-            Self::ApiKey => write!(f, "apiKey"),
-        }
-    }
-}
+use serde::Serialize;
 
 /// Response body for POST /v1/uploads (201)
 #[derive(Debug, Serialize)]
