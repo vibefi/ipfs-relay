@@ -66,10 +66,13 @@ if ! gh auth status -h github.com &>/dev/null; then
     exit 1
 fi
 
-# Install required collection only if missing. Avoid forcing a Galaxy call on
+# Install required collections only if missing. Avoid forcing a Galaxy call on
 # every run, which can fail due to local netrc/credentials policy.
 if ! ansible-galaxy collection list community.docker | grep -q "^community.docker "; then
     ansible-galaxy collection install community.docker --upgrade
+fi
+if ! ansible-galaxy collection list ansible.posix | grep -q "^ansible.posix "; then
+    ansible-galaxy collection install ansible.posix --upgrade
 fi
 
 GITHUB_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
@@ -80,6 +83,18 @@ fi
 
 mkdir -p "${GITHUB_KEY_DIR}"
 chmod 700 "${GITHUB_KEY_DIR}"
+
+# ── GitHub Actions deploy keypair ─────────────────────────────────────────────
+if [ ! -f "${GITHUB_KEY_PATH}" ]; then
+    echo "==> Generating GitHub Actions deploy keypair..."
+    ssh-keygen -t ed25519 -N '' -C 'github-actions@ipfs-relay' -f "${GITHUB_KEY_PATH}"
+fi
+
+# ── Set GitHub repo secrets ───────────────────────────────────────────────────
+echo "==> Setting GitHub repo secrets for ${GITHUB_REPO}..."
+gh secret set RELAY_SERVER_HOST    --repo "${GITHUB_REPO}" --body "${SERVER_IP}"
+gh secret set RELAY_SSH_PRIVATE_KEY --repo "${GITHUB_REPO}" < "${GITHUB_KEY_PATH}"
+gh secret set RELAY_SSH_USER       --repo "${GITHUB_REPO}" --body "${ANSIBLE_USER}"
 
 # ── Build inventory ───────────────────────────────────────────────────────────
 # GNU and BSD/macOS `mktemp` use different template rules.
@@ -102,36 +117,20 @@ INI
 
 # ── Run playbook ──────────────────────────────────────────────────────────────
 echo "==> Provisioning ${ANSIBLE_USER}@${SERVER_IP} ..."
-if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
-    ansible-playbook \
-        -i "${TMPINV}" \
-        -e "deploy_source=local" \
-        -e "local_project_dir=${PROJECT_ROOT}" \
-        -e "github_bootstrap_enabled=true" \
-        -e "github_repo=${GITHUB_REPO}" \
-        -e "github_relay_server_host=${SERVER_IP}" \
-        -e "github_actions_key_dir=${GITHUB_KEY_DIR}" \
-        -e "github_actions_key_path=${GITHUB_KEY_PATH}" \
-        "${SCRIPT_DIR}/playbook.yml" \
-        "${EXTRA_ARGS[@]}"
-else
-    ansible-playbook \
-        -i "${TMPINV}" \
-        -e "deploy_source=local" \
-        -e "local_project_dir=${PROJECT_ROOT}" \
-        -e "github_bootstrap_enabled=true" \
-        -e "github_repo=${GITHUB_REPO}" \
-        -e "github_relay_server_host=${SERVER_IP}" \
-        -e "github_actions_key_dir=${GITHUB_KEY_DIR}" \
-        -e "github_actions_key_path=${GITHUB_KEY_PATH}" \
-        "${SCRIPT_DIR}/playbook.yml"
-fi
+ansible-playbook \
+    -i "${TMPINV}" \
+    -e "deploy_source=local" \
+    -e "local_project_dir=${PROJECT_ROOT}" \
+    -e "github_actions_key_dir=${GITHUB_KEY_DIR}" \
+    -e "github_actions_key_path=${GITHUB_KEY_PATH}" \
+    "${SCRIPT_DIR}/playbook.yml" \
+    "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 
 echo ""
 echo "==> Done! Service should be running at https://ipfs.vibefi.dev"
 echo "    Health (public): curl https://ipfs.vibefi.dev/health"
 echo "    Health (on server): ssh ${ANSIBLE_USER}@${SERVER_IP} 'curl -s http://localhost/health'"
-echo "    GitHub secrets updated for ${GITHUB_REPO}:"
+echo "    GitHub secrets set for ${GITHUB_REPO}:"
 echo "      - RELAY_SERVER_HOST=${SERVER_IP}"
 echo "      - RELAY_SSH_PRIVATE_KEY (from ${GITHUB_KEY_PATH})"
 echo "      - RELAY_SSH_USER=${ANSIBLE_USER}"

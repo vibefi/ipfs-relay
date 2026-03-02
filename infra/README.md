@@ -25,25 +25,28 @@ infra/
 
 ```bash
 cd infra/ansible
-./setup.sh <SERVER_HOST_OR_IP> root ~/.ssh/your_key
+./setup.sh <SERVER_IP> [USER] [SSH_KEY_PATH]
 ```
 
+If `SSH_KEY_PATH` is omitted, `setup.sh` auto-discovers `~/.ssh/id_ed25519`, `~/.ssh/id_rsa`, or `~/.ssh/id_ecdsa` in that order.
+
 Prerequisites on the machine running `setup.sh`:
-1. `ansible-playbook`
+1. `ansible-playbook` (`pip install ansible`)
 2. `gh` CLI
 3. `gh auth status -h github.com` is authenticated for this repo
 
 The playbook will:
 1. Update the OS and install base packages
-2. Install Docker CE + Compose plugin from Docker's official repo
-3. Configure UFW firewall (ports 22, 80, 443, 4001)
-4. Sync your current local checkout to `/opt/ipfs-relay` (default)
-5. Write `.env` from inventory variables
-6. Build the relay Docker image and start all three services
+2. Create and enable a 1 GB swapfile (`/swapfile`, persisted in `/etc/fstab`)
+3. Install Docker CE + Compose plugin from Docker's official repo
+4. Configure UFW firewall (ports 22, 80, 443/TCP+UDP, 4001/TCP+UDP)
+5. Sync your current local checkout to `/opt/ipfs-relay` (default)
+6. Write `.env` from inventory variables
 7. Install + enable the systemd unit for auto-start on reboot
-8. Generate a dedicated GitHub Actions SSH keypair (once) at `infra/ansible/.keys/github_actions_relay_ed25519`
-9. Add the generated public key to `authorized_keys` for the deploy user on the server
-10. Set GitHub repo secrets via `gh`:
+8. Build the relay Docker image and start all three services
+9. Generate a dedicated GitHub Actions SSH keypair (once) at `infra/ansible/.keys/github_actions_relay_ed25519`
+10. Add the generated public key to `authorized_keys` for the deploy user on the server
+11. Set GitHub repo secrets via `gh`:
     `RELAY_SERVER_HOST`, `RELAY_SSH_PRIVATE_KEY`, `RELAY_SSH_USER`
 
 Note: during provisioning, health is verified from inside the relay container

@@ -27,99 +27,38 @@
 
   tasks:
 
-    # ── GitHub CI bootstrap (control node) ────────────────────────────────────
-    # Ensures GitHub Actions deploy secrets are set from the setup inputs and
-    # that a dedicated deploy keypair exists for CI.
-
-    - name: Verify gh CLI is available on control node
-      command: gh --version
-      delegate_to: localhost
-      run_once: true
-      become: false
-      changed_when: false
-      when: github_bootstrap_enabled | bool
-
-    - name: Verify gh auth on control node
-      command: gh auth status -h github.com
-      delegate_to: localhost
-      run_once: true
-      become: false
-      changed_when: false
-      when: github_bootstrap_enabled | bool
-
-    - name: Ensure GitHub Actions key directory exists
-      file:
-        path: "{{ github_actions_key_dir }}"
-        state: directory
-        mode: "0700"
-      delegate_to: localhost
-      run_once: true
-      become: false
-      when: github_bootstrap_enabled | bool
-
-    - name: Generate GitHub Actions deploy keypair (if missing)
-      command: >-
-        ssh-keygen -t ed25519 -N '' -C '{{ github_actions_key_comment }}'
-        -f '{{ github_actions_key_path }}'
-      args:
-        creates: "{{ github_actions_key_path }}"
-      delegate_to: localhost
-      run_once: true
-      become: false
-      when: github_bootstrap_enabled | bool
-
-    - name: Set RELAY_SERVER_HOST GitHub repo secret
-      command:
-        argv:
-          - gh
-          - secret
-          - set
-          - RELAY_SERVER_HOST
-          - --repo
-          - "{{ github_repo }}"
-          - --body
-          - "{{ github_relay_server_host }}"
-      delegate_to: localhost
-      run_once: true
-      become: false
-      changed_when: true
-      when: github_bootstrap_enabled | bool
-
-    - name: Set RELAY_SSH_PRIVATE_KEY GitHub repo secret
-      command:
-        argv:
-          - gh
-          - secret
-          - set
-          - RELAY_SSH_PRIVATE_KEY
-          - --repo
-          - "{{ github_repo }}"
-          - --body-file
-          - "{{ github_actions_key_path }}"
-      delegate_to: localhost
-      run_once: true
-      become: false
-      changed_when: true
-      when: github_bootstrap_enabled | bool
-
-    - name: Set RELAY_SSH_USER GitHub repo secret
-      command:
-        argv:
-          - gh
-          - secret
-          - set
-          - RELAY_SSH_USER
-          - --repo
-          - "{{ github_repo }}"
-          - --body
-          - "{{ ansible_user }}"
-      delegate_to: localhost
-      run_once: true
-      become: false
-      changed_when: true
-      when: github_bootstrap_enabled | bool
-
     # ── System bootstrap ───────────────────────────────────────────────────────
+
+    - name: Check if swapfile exists
+      stat:
+        path: /swapfile
+      register: swapfile_stat
+
+    - name: Create 1GB swapfile
+      command: fallocate -l 1G /swapfile
+      when: not swapfile_stat.stat.exists
+
+    - name: Set swapfile permissions
+      file:
+        path: /swapfile
+        mode: "0600"
+      when: not swapfile_stat.stat.exists
+
+    - name: Format swapfile
+      command: mkswap /swapfile
+      when: not swapfile_stat.stat.exists
+
+    - name: Enable swapfile
+      command: swapon /swapfile
+      when: not swapfile_stat.stat.exists
+
+    - name: Persist swapfile in /etc/fstab
+      mount:
+        path: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
 
     - name: Set hostname
       hostname:
@@ -213,7 +152,7 @@
         user: "{{ ansible_user }}"
         key: "{{ lookup('file', github_actions_key_path + '.pub') }}"
         state: present
-      when: github_bootstrap_enabled | bool
+      when: (github_actions_key_path + '.pub') is file
 
     # ── Firewall ───────────────────────────────────────────────────────────────
     # Sensitive ports (Kubo API :5001, relay :8080) use `expose:` in compose,
