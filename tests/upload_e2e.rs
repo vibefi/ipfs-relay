@@ -6,10 +6,6 @@
 //!
 //! 2) Remote relay endpoint (override base URL)
 //!    Run: VIBEFI_RELAY_E2E_BASE_URL=http://<SERVER_IP> cargo test --test upload_e2e -- --ignored
-//!
-//! Optional env vars:
-//! - VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL=https://<gateway-host>
-//!     Optional override for gateway retrieval checks (defaults to BASE_URL in remote mode).
 
 use std::sync::Arc;
 
@@ -34,9 +30,17 @@ struct UploadFileSpec {
 
 struct RelayClient {
     base_url: String,
+    retrieval: RetrievalBackend,
     http: reqwest::Client,
     // Keep local test server alive for the duration of a test.
     _server_task: Option<tokio::task::JoinHandle<()>>,
+}
+
+enum RetrievalBackend {
+    /// Local mode: verify against Kubo API directly.
+    KuboApi { base_url: String },
+    /// Remote mode: verify through the deployed relay/gateway domain.
+    Gateway { base_url: String },
 }
 
 struct HttpResponse {
@@ -44,43 +48,16 @@ struct HttpResponse {
     body: serde_json::Value,
 }
 
-fn remote_mode() -> bool {
-    std::env::var("VIBEFI_RELAY_E2E_BASE_URL").is_ok()
-}
-
-fn kubo_api_url() -> Option<String> {
-    if remote_mode() {
-        return None;
-    }
-
-    Some(
-        std::env::var("VIBEFI_RELAY__IPFS__KUBO_API_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:5001".to_string()),
-    )
-}
-
-fn gateway_base_url() -> Option<String> {
-    if let Ok(url) = std::env::var("VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL") {
-        return Some(url.trim_end_matches('/').to_string());
-    }
-
-    if let Ok(url) = std::env::var("VIBEFI_RELAY_E2E_BASE_URL") {
-        return Some(url.trim_end_matches('/').to_string());
-    }
-
-    None
-}
-
-fn retrieval_checks_enabled() -> bool {
-    kubo_api_url().is_some() || gateway_base_url().is_some()
-}
-
 async fn test_client() -> RelayClient {
     let http = reqwest::Client::new();
 
     if let Ok(base_url) = std::env::var("VIBEFI_RELAY_E2E_BASE_URL") {
+        let base_url = base_url.trim_end_matches('/').to_string();
         return RelayClient {
-            base_url: base_url.trim_end_matches('/').to_string(),
+            retrieval: RetrievalBackend::Gateway {
+                base_url: base_url.clone(),
+            },
+            base_url,
             http,
             _server_task: None,
         };
@@ -96,7 +73,7 @@ async fn test_client() -> RelayClient {
             request_timeout_secs: 120,
         },
         ipfs: IpfsConfig {
-            kubo_api_url: kubo_url,
+            kubo_api_url: kubo_url.clone(),
         },
         pinning: PinningConfig {
             pinata_jwt: None,
@@ -145,6 +122,7 @@ async fn test_client() -> RelayClient {
 
     RelayClient {
         base_url: format!("http://{addr}"),
+        retrieval: RetrievalBackend::KuboApi { base_url: kubo_url },
         http,
         _server_task: Some(server_task),
     }
@@ -177,6 +155,64 @@ impl RelayClient {
 
         let resp = req.send().await.expect("POST /v1/uploads request failed");
         parse_response(resp).await
+    }
+
+    async fn verify_cid_reachable(&self, cid: &str) {
+        let client = reqwest::Client::new();
+
+        match &self.retrieval {
+            RetrievalBackend::KuboApi { base_url } => {
+                let resp = client
+                    .post(format!("{base_url}/api/v0/dag/stat?arg={cid}"))
+                    .send()
+                    .await
+                    .expect("kubo dag/stat request failed");
+
+                assert!(
+                    resp.status().is_success(),
+                    "CID {cid} not found on Kubo: status {}",
+                    resp.status()
+                );
+            }
+            RetrievalBackend::Gateway { base_url } => {
+                let resp = client
+                    .get(format!("{base_url}/ipfs/{cid}"))
+                    .send()
+                    .await
+                    .expect("gateway CID check request failed");
+
+                assert!(
+                    resp.status().is_success(),
+                    "CID {cid} not found on gateway: status {}",
+                    resp.status()
+                );
+            }
+        }
+    }
+
+    async fn fetch_file(&self, root_cid: &str, path: &str) -> Vec<u8> {
+        let client = reqwest::Client::new();
+
+        let resp = match &self.retrieval {
+            RetrievalBackend::KuboApi { base_url } => client
+                .post(format!("{base_url}/api/v0/cat?arg={root_cid}/{path}"))
+                .send()
+                .await
+                .expect("kubo cat request failed"),
+            RetrievalBackend::Gateway { base_url } => client
+                .get(format!("{base_url}/ipfs/{root_cid}/{path}"))
+                .send()
+                .await
+                .expect("gateway file fetch request failed"),
+        };
+
+        assert!(
+            resp.status().is_success(),
+            "failed to fetch {path}: status {}",
+            resp.status()
+        );
+
+        resp.bytes().await.expect("failed to read body").to_vec()
     }
 }
 
@@ -251,76 +287,6 @@ fn multi_file_bundle() -> Vec<UploadFileSpec> {
     ]
 }
 
-async fn verify_cid_on_kubo(cid: &str) {
-    let client = reqwest::Client::new();
-
-    if let Some(kubo_url) = kubo_api_url() {
-        let resp = client
-            .post(format!("{kubo_url}/api/v0/dag/stat?arg={cid}"))
-            .send()
-            .await
-            .expect("kubo dag/stat request failed");
-
-        assert!(
-            resp.status().is_success(),
-            "CID {cid} not found on Kubo: status {}",
-            resp.status()
-        );
-        return;
-    }
-
-    let Some(gateway_url) = gateway_base_url() else {
-        return;
-    };
-
-    let resp = client
-        .get(format!("{gateway_url}/ipfs/{cid}"))
-        .send()
-        .await
-        .expect("gateway CID check request failed");
-
-    assert!(
-        resp.status().is_success(),
-        "CID {cid} not found on gateway: status {}",
-        resp.status()
-    );
-}
-
-async fn fetch_file_from_kubo(root_cid: &str, path: &str) -> Vec<u8> {
-    let client = reqwest::Client::new();
-
-    if let Some(kubo_url) = kubo_api_url() {
-        let resp = client
-            .post(format!("{kubo_url}/api/v0/cat?arg={root_cid}/{path}"))
-            .send()
-            .await
-            .expect("kubo cat request failed");
-
-        assert!(
-            resp.status().is_success(),
-            "failed to fetch {path} from Kubo: status {}",
-            resp.status()
-        );
-
-        return resp.bytes().await.expect("failed to read body").to_vec();
-    }
-
-    let gateway_url = gateway_base_url().expect("gateway url is required for file fetch");
-    let resp = client
-        .get(format!("{gateway_url}/ipfs/{root_cid}/{path}"))
-        .send()
-        .await
-        .expect("gateway file fetch request failed");
-
-    assert!(
-        resp.status().is_success(),
-        "failed to fetch {path} from gateway: status {}",
-        resp.status()
-    );
-
-    resp.bytes().await.expect("failed to read body").to_vec()
-}
-
 #[tokio::test]
 #[ignore]
 async fn upload_valid_bundle_returns_201() {
@@ -336,10 +302,9 @@ async fn upload_valid_bundle_returns_201() {
     assert_eq!(body["fileCount"].as_u64().unwrap(), 3);
     assert_eq!(body["validation"]["isVibeFiPackage"].as_bool(), Some(true));
     assert_eq!(body["pinning"]["local"].as_str(), Some("pinned"));
-
-    if retrieval_checks_enabled() {
-        verify_cid_on_kubo(body["rootCid"].as_str().unwrap()).await;
-    }
+    relay
+        .verify_cid_reachable(body["rootCid"].as_str().unwrap())
+        .await;
 }
 
 #[tokio::test]
@@ -377,13 +342,6 @@ async fn deterministic_cid_for_same_content() {
 #[tokio::test]
 #[ignore]
 async fn upload_then_download_from_ipfs() {
-    if !retrieval_checks_enabled() {
-        eprintln!(
-            "Skipping retrieval verification: set VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL to enable"
-        );
-        return;
-    }
-
     let relay = test_client().await;
 
     let index_html = b"<html><body>Hello VibeFi</body></html>";
@@ -396,17 +354,17 @@ async fn upload_then_download_from_ipfs() {
     let root_cid = response.body["rootCid"].as_str().unwrap().to_string();
 
     assert_eq!(
-        fetch_file_from_kubo(&root_cid, "index.html").await,
+        relay.fetch_file(&root_cid, "index.html").await,
         index_html,
         "index.html content mismatch"
     );
     assert_eq!(
-        fetch_file_from_kubo(&root_cid, "src/app.js").await,
+        relay.fetch_file(&root_cid, "src/app.js").await,
         app_js,
         "src/app.js content mismatch"
     );
     assert_eq!(
-        fetch_file_from_kubo(&root_cid, "styles/style.css").await,
+        relay.fetch_file(&root_cid, "styles/style.css").await,
         style_css,
         "styles/style.css content mismatch"
     );

@@ -159,7 +159,10 @@ mod tests {
         with_env_vars(
             &[
                 ("VIBEFI_RELAY__SERVER__PORT", "9999"),
-                ("VIBEFI_RELAY__IPFS__KUBO_API_URL", "http://custom-kubo:5001"),
+                (
+                    "VIBEFI_RELAY__IPFS__KUBO_API_URL",
+                    "http://custom-kubo:5001",
+                ),
                 ("VIBEFI_RELAY__PINNING__PINATA_JWT", "test-jwt-token"),
                 ("VIBEFI_RELAY__LIMITS__MAX_UPLOAD_BYTES", "2048"),
                 ("VIBEFI_RELAY__RATE_LIMIT__PER_IP_PER_HOUR", "100"),
@@ -180,7 +183,10 @@ mod tests {
         // default.toml sets port = 8080
         with_env_vars(&[("VIBEFI_RELAY__SERVER__PORT", "3000")], || {
             let cfg = AppConfig::load().expect("config should load");
-            assert_eq!(cfg.server.port, 3000, "env var should override toml default");
+            assert_eq!(
+                cfg.server.port, 3000,
+                "env var should override toml default"
+            );
         });
     }
 
@@ -188,8 +194,14 @@ mod tests {
     fn single_underscore_field_names_preserved() {
         with_env_vars(
             &[
-                ("VIBEFI_RELAY__IPFS__KUBO_API_URL", "http://underscore-test:5001"),
-                ("VIBEFI_RELAY__PINNING__FOUREVERLAND_TOKEN", "test-4ever-token"),
+                (
+                    "VIBEFI_RELAY__IPFS__KUBO_API_URL",
+                    "http://underscore-test:5001",
+                ),
+                (
+                    "VIBEFI_RELAY__PINNING__FOUREVERLAND_TOKEN",
+                    "test-4ever-token",
+                ),
             ],
             || {
                 let cfg = AppConfig::load().expect("config should load");

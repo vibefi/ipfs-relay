@@ -28,6 +28,11 @@ cd infra/ansible
 ./setup.sh <SERVER_HOST_OR_IP> root ~/.ssh/your_key
 ```
 
+Prerequisites on the machine running `setup.sh`:
+1. `ansible-playbook`
+2. `gh` CLI
+3. `gh auth status -h github.com` is authenticated for this repo
+
 The playbook will:
 1. Update the OS and install base packages
 2. Install Docker CE + Compose plugin from Docker's official repo
@@ -36,6 +41,10 @@ The playbook will:
 5. Write `.env` from inventory variables
 6. Build the relay Docker image and start all three services
 7. Install + enable the systemd unit for auto-start on reboot
+8. Generate a dedicated GitHub Actions SSH keypair (once) at `infra/ansible/.keys/github_actions_relay_ed25519`
+9. Add the generated public key to `authorized_keys` for the deploy user on the server
+10. Set GitHub repo secrets via `gh`:
+    `RELAY_SERVER_HOST`, `RELAY_SSH_PRIVATE_KEY`, `RELAY_SSH_USER`
 
 Note: during provisioning, health is verified from inside the relay container
 so deploys succeed even before DNS/TLS for `ipfs.vibefi.dev` is live.
@@ -47,14 +56,14 @@ If you prefer pulling from GitHub instead of syncing local files, pass:
 
 After provisioning succeeds:
 
-1. Create/Update DNS records so your domain points to the server.
+1. Create/Update DNS records so `ipfs.vibefi.dev` points to the server.
 2. Ensure inbound ports `80` and `443` are reachable at the server/public firewall level.
 3. Wait for certificate issuance and HTTPS readiness.
 
 Verify:
 
 ```bash
-curl -i https://<your-domain>/health
+curl -i https://ipfs.vibefi.dev/health
 ```
 
 Expected result: `HTTP 200` with a JSON health body.
@@ -62,27 +71,69 @@ Expected result: `HTTP 200` with a JSON health body.
 Public gateway retrieval is exposed at:
 
 ```bash
-https://<your-domain>/ipfs/<CID>
+https://ipfs.vibefi.dev/ipfs/<CID>
 ```
 
 If you use a proxy/CDN (for example Cloudflare), set the record to DNS-only until
 origin cert issuance completes, then re-enable proxy mode.
 
-### Run Integration Tests Against The Deployed Domain
+### Run A Single E2E Test Against The Deployed Domain
 
-First ensure that rate limits have been turned off. Then, from repo root:
+When running against production, keep rate limiting enabled and run one test that
+checks the upload success contract (`201` + response shape) and verifies the CID is
+reachable via `/ipfs/<CID>`:
+`upload_valid_bundle_returns_201`.
 
-```bash
-VIBEFI_RELAY_E2E_BASE_URL=https://<your-domain> \
-cargo test --test upload_e2e -- --ignored
-```
-
-Optional knobs:
+From repo root:
 
 ```bash
-# Optional override for retrieval checks (defaults to VIBEFI_RELAY_E2E_BASE_URL)
-VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL=https://<your-domain>
+VIBEFI_RELAY_E2E_BASE_URL=https://ipfs.vibefi.dev \
+cargo test --test upload_e2e upload_valid_bundle_returns_201 -- --ignored --exact --nocapture
 ```
+
+## GitHub Actions
+
+Two workflows are configured:
+
+1. `.github/workflows/e2e-pr.yml`
+2. `.github/workflows/release-on-tag.yml`
+
+### PR workflow: local E2E
+
+Trigger: every pull request.
+
+What it does:
+1. Starts a local Kubo daemon in Docker on `127.0.0.1:5001`
+2. Runs `cargo test --test upload_e2e -- --ignored --nocapture` in local mode
+
+Required GitHub secrets: none.
+
+### Tag workflow: release deploy with Ansible
+
+Trigger: tag push (`*`) and manual `workflow_dispatch`.
+
+What it does:
+1. Checks out the tagged commit
+2. Runs `infra/ansible/playbook.yml`
+3. Deploys using `deploy_source=local` from the checked out workspace
+
+Required GitHub secrets:
+1. `RELAY_SERVER_HOST` (set automatically by `setup.sh` / playbook)
+2. `RELAY_SSH_PRIVATE_KEY` (set automatically by `setup.sh` / playbook)
+3. `RELAY_SSH_USER` (set automatically by `setup.sh` / playbook)
+
+Optional GitHub secrets:
+1. `RELAY_PINATA_JWT` (written to `infra/.env` on server)
+2. `RELAY_FOUREVERLAND_TOKEN` (written to `infra/.env` on server)
+3. `RELAY_KUBO_PUBLIC_IP` (overrides playbook default `ansible_host`)
+
+### Generated deploy keys
+
+`setup.sh`/playbook create a dedicated CI deploy keypair at:
+1. `infra/ansible/.keys/github_actions_relay_ed25519`
+2. `infra/ansible/.keys/github_actions_relay_ed25519.pub`
+
+This directory is gitignored (`/infra/ansible/.keys/`) and excluded from rsync sync to the server.
 
 ## Manual operation
 

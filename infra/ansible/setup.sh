@@ -13,6 +13,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+GITHUB_KEY_DIR="${SCRIPT_DIR}/.keys"
+GITHUB_KEY_PATH="${GITHUB_KEY_DIR}/github_actions_relay_ed25519"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 SERVER_IP="${1:?Usage: $0 <SERVER_IP> [USER] [SSH_KEY_PATH] [extra ansible args...]}"
@@ -52,11 +54,32 @@ if ! command -v ansible-playbook &>/dev/null; then
     exit 1
 fi
 
+if ! command -v gh &>/dev/null; then
+    echo "Error: gh CLI not found."
+    echo "  https://cli.github.com/"
+    exit 1
+fi
+
+if ! gh auth status -h github.com &>/dev/null; then
+    echo "Error: gh is not authenticated for github.com."
+    echo "  gh auth login"
+    exit 1
+fi
+
 # Install required collection only if missing. Avoid forcing a Galaxy call on
 # every run, which can fail due to local netrc/credentials policy.
 if ! ansible-galaxy collection list community.docker | grep -q "^community.docker "; then
     ansible-galaxy collection install community.docker --upgrade
 fi
+
+GITHUB_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+if [ -z "${GITHUB_REPO}" ]; then
+    echo "Error: failed to detect GitHub repository via gh."
+    exit 1
+fi
+
+mkdir -p "${GITHUB_KEY_DIR}"
+chmod 700 "${GITHUB_KEY_DIR}"
 
 # ── Build inventory ───────────────────────────────────────────────────────────
 # GNU and BSD/macOS `mktemp` use different template rules.
@@ -84,6 +107,11 @@ if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
         -i "${TMPINV}" \
         -e "deploy_source=local" \
         -e "local_project_dir=${PROJECT_ROOT}" \
+        -e "github_bootstrap_enabled=true" \
+        -e "github_repo=${GITHUB_REPO}" \
+        -e "github_relay_server_host=${SERVER_IP}" \
+        -e "github_actions_key_dir=${GITHUB_KEY_DIR}" \
+        -e "github_actions_key_path=${GITHUB_KEY_PATH}" \
         "${SCRIPT_DIR}/playbook.yml" \
         "${EXTRA_ARGS[@]}"
 else
@@ -91,6 +119,11 @@ else
         -i "${TMPINV}" \
         -e "deploy_source=local" \
         -e "local_project_dir=${PROJECT_ROOT}" \
+        -e "github_bootstrap_enabled=true" \
+        -e "github_repo=${GITHUB_REPO}" \
+        -e "github_relay_server_host=${SERVER_IP}" \
+        -e "github_actions_key_dir=${GITHUB_KEY_DIR}" \
+        -e "github_actions_key_path=${GITHUB_KEY_PATH}" \
         "${SCRIPT_DIR}/playbook.yml"
 fi
 
@@ -98,3 +131,7 @@ echo ""
 echo "==> Done! Service should be running at https://ipfs.vibefi.dev"
 echo "    Health (public): curl https://ipfs.vibefi.dev/health"
 echo "    Health (on server): ssh ${ANSIBLE_USER}@${SERVER_IP} 'curl -s http://localhost/health'"
+echo "    GitHub secrets updated for ${GITHUB_REPO}:"
+echo "      - RELAY_SERVER_HOST=${SERVER_IP}"
+echo "      - RELAY_SSH_PRIVATE_KEY (from ${GITHUB_KEY_PATH})"
+echo "      - RELAY_SSH_USER=${ANSIBLE_USER}"
