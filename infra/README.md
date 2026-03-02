@@ -70,7 +70,7 @@ origin cert issuance completes, then re-enable proxy mode.
 
 ### Run Integration Tests Against The Deployed Domain
 
-From repo root:
+First ensure that rate limits have been turned off. Then, from repo root:
 
 ```bash
 VIBEFI_RELAY_E2E_BASE_URL=https://<your-domain> \

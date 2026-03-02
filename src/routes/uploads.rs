@@ -10,11 +10,11 @@ use axum::{
 use sha2::{Digest, Sha256};
 use tracing::{info, instrument};
 use ulid::Ulid;
-use uuid::Uuid;
 
 use crate::{
     AppState,
     error::{AppError, AppResult},
+    middleware::request_id::current_request_id,
     models::{PinningSummary, ReplicaStatus, UploadResponse, UploadedFile, ValidationSummary},
     validation::validate_vibefi_package,
 };
@@ -30,11 +30,7 @@ pub async fn create_upload(
     mut multipart: Multipart,
 ) -> AppResult<(StatusCode, Json<UploadResponse>)> {
     let upload_id = format!("upl_{}", Ulid::new());
-    let request_id = headers
-        .get("x-request-id")
-        .and_then(|v| v.to_str().ok())
-        .map(String::from)
-        .unwrap_or_else(|| format!("req_{}", Uuid::new_v4()));
+    let request_id = current_request_id().unwrap_or_else(|| format!("req_{}", Ulid::new()));
 
     tracing::Span::current().record("upload_id", &upload_id);
 

@@ -95,6 +95,7 @@ impl AppConfig {
                 //   VIBEFI_RELAY__IPFS__KUBO_API_URL=http://kubo:5001
                 //   VIBEFI_RELAY__PINNING__PINATA_JWT=...
                 Environment::with_prefix("VIBEFI_RELAY")
+                    .prefix_separator("__")
                     .separator("__")
                     .try_parsing(true),
             )
@@ -130,4 +131,74 @@ fn default_ip_per_minute() -> u32 {
 }
 fn default_ip_per_hour() -> u32 {
     15
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    /// Helper: set env vars, run a closure, then clean up.
+    fn with_env_vars<F: FnOnce()>(vars: &[(&str, &str)], f: F) {
+        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: Tests are serialised by ENV_MUTEX so no other thread is
+        // reading env vars concurrently.
+        for (k, v) in vars {
+            unsafe { std::env::set_var(k, v) };
+        }
+        f();
+        for (k, _) in vars {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    #[test]
+    fn env_overrides_all_sections() {
+        with_env_vars(
+            &[
+                ("VIBEFI_RELAY__SERVER__PORT", "9999"),
+                ("VIBEFI_RELAY__IPFS__KUBO_API_URL", "http://custom-kubo:5001"),
+                ("VIBEFI_RELAY__PINNING__PINATA_JWT", "test-jwt-token"),
+                ("VIBEFI_RELAY__LIMITS__MAX_UPLOAD_BYTES", "2048"),
+                ("VIBEFI_RELAY__RATE_LIMIT__PER_IP_PER_HOUR", "100"),
+            ],
+            || {
+                let cfg = AppConfig::load().expect("config should load");
+                assert_eq!(cfg.server.port, 9999);
+                assert_eq!(cfg.ipfs.kubo_api_url, "http://custom-kubo:5001");
+                assert_eq!(cfg.pinning.pinata_jwt.as_deref(), Some("test-jwt-token"));
+                assert_eq!(cfg.limits.max_upload_bytes, 2048);
+                assert_eq!(cfg.rate_limit.per_ip_per_hour, 100);
+            },
+        );
+    }
+
+    #[test]
+    fn env_overrides_take_precedence_over_toml() {
+        // default.toml sets port = 8080
+        with_env_vars(&[("VIBEFI_RELAY__SERVER__PORT", "3000")], || {
+            let cfg = AppConfig::load().expect("config should load");
+            assert_eq!(cfg.server.port, 3000, "env var should override toml default");
+        });
+    }
+
+    #[test]
+    fn single_underscore_field_names_preserved() {
+        with_env_vars(
+            &[
+                ("VIBEFI_RELAY__IPFS__KUBO_API_URL", "http://underscore-test:5001"),
+                ("VIBEFI_RELAY__PINNING__FOUREVERLAND_TOKEN", "test-4ever-token"),
+            ],
+            || {
+                let cfg = AppConfig::load().expect("config should load");
+                assert_eq!(cfg.ipfs.kubo_api_url, "http://underscore-test:5001");
+                assert_eq!(
+                    cfg.pinning.foureverland_token.as_deref(),
+                    Some("test-4ever-token"),
+                );
+            },
+        );
+    }
 }
