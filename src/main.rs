@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::{Router, middleware};
+use axum::{Router, http::StatusCode, middleware};
 use axum_prometheus::PrometheusMetricLayer;
 use tower_http::{
     compression::CompressionLayer,
@@ -63,9 +63,10 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::api_router(state.clone()))
         .merge(routes::meta_router(metrics_handle))
         .layer(NormalizePathLayer::trim_trailing_slash())
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(
-            config.server.request_timeout_secs,
-        )))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(config.server.request_timeout_secs),
+        ))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(make_span)

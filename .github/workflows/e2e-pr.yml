@@ -24,7 +24,7 @@ jobs:
 
       - name: Start local Kubo daemon
         run: |
-          docker run -d --name kubo -p 5001:5001 ipfs/kubo:latest
+          docker run -d --name kubo -p 5001:5001 ipfs/kubo:v0.40.1
 
       - name: Wait for Kubo API
         run: |
@@ -46,4 +46,3 @@ jobs:
       - name: Print Kubo logs
         if: always()
         run: docker logs kubo
-

@@ -20,9 +20,10 @@ use crate::AppState;
 pub fn api_router(state: AppState) -> Router {
     // IP-based token buckets:
     // - 1 request per minute (burst 1)
-    // - 15 requests per hour (burst 15)
+    // - configured requests per hour (burst max(3, per_hour / 3))
     let per_ip_per_minute = state.config.rate_limit.per_ip_per_minute;
     let per_ip_per_hour = state.config.rate_limit.per_ip_per_hour;
+    let hourly_burst = (per_ip_per_hour / 3).max(3);
     let replenish_minute_ms = (60_000u64)
         .checked_div(per_ip_per_minute as u64)
         .unwrap_or(60_000)
@@ -41,7 +42,7 @@ pub fn api_router(state: AppState) -> Router {
 
     let hour_conf = GovernorConfigBuilder::default()
         .per_millisecond(replenish_hour_ms)
-        .burst_size(15)
+        .burst_size(hourly_burst)
         .key_extractor(SmartIpKeyExtractor)
         .finish()
         .unwrap();
