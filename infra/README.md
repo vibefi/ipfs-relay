@@ -7,7 +7,7 @@ Deployment infrastructure for the VibeFi IPFS relay service.
 ```
 infra/
 ├── docker-compose.yml      # relay + kubo + caddy
-├── Caddyfile               # TLS termination, reverse proxy to relay:8080
+├── Caddyfile               # TLS termination, relay proxy + public IPFS gateway paths
 ├── .env.example            # env vars template (copy to .env)
 ├── scripts/
 │   └── kubo-init.sh        # Kubo first-run init + config entrypoint
@@ -59,6 +59,12 @@ curl -i https://<your-domain>/health
 
 Expected result: `HTTP 200` with a JSON health body.
 
+Public gateway retrieval is exposed at:
+
+```bash
+https://<your-domain>/ipfs/<CID>
+```
+
 If you use a proxy/CDN (for example Cloudflare), set the record to DNS-only until
 origin cert issuance completes, then re-enable proxy mode.
 
@@ -74,8 +80,8 @@ cargo test --test upload_e2e -- --ignored
 Optional knobs:
 
 ```bash
-# Enable Kubo CID/content verification checks in remote mode
-VIBEFI_RELAY_E2E_KUBO_API_URL=http://<kubo-host>:5001
+# Optional override for retrieval checks (defaults to VIBEFI_RELAY_E2E_BASE_URL)
+VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL=https://<your-domain>
 ```
 
 ## Manual operation

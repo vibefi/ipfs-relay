@@ -8,9 +8,8 @@
 //!    Run: VIBEFI_RELAY_E2E_BASE_URL=http://<SERVER_IP> cargo test --test upload_e2e -- --ignored
 //!
 //! Optional env vars:
-//! - VIBEFI_RELAY_E2E_KUBO_API_URL=http://host:5001
-//!     Required only for tests that directly verify CID/file retrieval on Kubo.
-//!     If unset in remote mode, Kubo-specific checks are skipped.
+//! - VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL=https://<gateway-host>
+//!     Optional override for gateway retrieval checks (defaults to BASE_URL in remote mode).
 
 use std::sync::Arc;
 
@@ -50,10 +49,6 @@ fn remote_mode() -> bool {
 }
 
 fn kubo_api_url() -> Option<String> {
-    if let Ok(url) = std::env::var("VIBEFI_RELAY_E2E_KUBO_API_URL") {
-        return Some(url);
-    }
-
     if remote_mode() {
         return None;
     }
@@ -64,8 +59,20 @@ fn kubo_api_url() -> Option<String> {
     )
 }
 
-fn kubo_checks_enabled() -> bool {
-    kubo_api_url().is_some()
+fn gateway_base_url() -> Option<String> {
+    if let Ok(url) = std::env::var("VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL") {
+        return Some(url.trim_end_matches('/').to_string());
+    }
+
+    if let Ok(url) = std::env::var("VIBEFI_RELAY_E2E_BASE_URL") {
+        return Some(url.trim_end_matches('/').to_string());
+    }
+
+    None
+}
+
+fn retrieval_checks_enabled() -> bool {
+    kubo_api_url().is_some() || gateway_base_url().is_some()
 }
 
 async fn test_client() -> RelayClient {
@@ -245,37 +252,69 @@ fn multi_file_bundle() -> Vec<UploadFileSpec> {
 }
 
 async fn verify_cid_on_kubo(cid: &str) {
-    let Some(kubo_url) = kubo_api_url() else {
+    let client = reqwest::Client::new();
+
+    if let Some(kubo_url) = kubo_api_url() {
+        let resp = client
+            .post(format!("{kubo_url}/api/v0/dag/stat?arg={cid}"))
+            .send()
+            .await
+            .expect("kubo dag/stat request failed");
+
+        assert!(
+            resp.status().is_success(),
+            "CID {cid} not found on Kubo: status {}",
+            resp.status()
+        );
+        return;
+    }
+
+    let Some(gateway_url) = gateway_base_url() else {
         return;
     };
 
-    let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{kubo_url}/api/v0/dag/stat?arg={cid}"))
+        .get(format!("{gateway_url}/ipfs/{cid}"))
         .send()
         .await
-        .expect("kubo dag/stat request failed");
+        .expect("gateway CID check request failed");
 
     assert!(
         resp.status().is_success(),
-        "CID {cid} not found on Kubo: status {}",
+        "CID {cid} not found on gateway: status {}",
         resp.status()
     );
 }
 
 async fn fetch_file_from_kubo(root_cid: &str, path: &str) -> Vec<u8> {
-    let kubo_url = kubo_api_url().expect("kubo url is required for file fetch");
-
     let client = reqwest::Client::new();
+
+    if let Some(kubo_url) = kubo_api_url() {
+        let resp = client
+            .post(format!("{kubo_url}/api/v0/cat?arg={root_cid}/{path}"))
+            .send()
+            .await
+            .expect("kubo cat request failed");
+
+        assert!(
+            resp.status().is_success(),
+            "failed to fetch {path} from Kubo: status {}",
+            resp.status()
+        );
+
+        return resp.bytes().await.expect("failed to read body").to_vec();
+    }
+
+    let gateway_url = gateway_base_url().expect("gateway url is required for file fetch");
     let resp = client
-        .post(format!("{kubo_url}/api/v0/cat?arg={root_cid}/{path}"))
+        .get(format!("{gateway_url}/ipfs/{root_cid}/{path}"))
         .send()
         .await
-        .expect("kubo cat request failed");
+        .expect("gateway file fetch request failed");
 
     assert!(
         resp.status().is_success(),
-        "failed to fetch {path} from Kubo: status {}",
+        "failed to fetch {path} from gateway: status {}",
         resp.status()
     );
 
@@ -298,7 +337,7 @@ async fn upload_valid_bundle_returns_201() {
     assert_eq!(body["validation"]["isVibeFiPackage"].as_bool(), Some(true));
     assert_eq!(body["pinning"]["local"].as_str(), Some("pinned"));
 
-    if kubo_checks_enabled() {
+    if retrieval_checks_enabled() {
         verify_cid_on_kubo(body["rootCid"].as_str().unwrap()).await;
     }
 }
@@ -338,9 +377,9 @@ async fn deterministic_cid_for_same_content() {
 #[tokio::test]
 #[ignore]
 async fn upload_then_download_from_ipfs() {
-    if !kubo_checks_enabled() {
+    if !retrieval_checks_enabled() {
         eprintln!(
-            "Skipping Kubo content verification: set VIBEFI_RELAY_E2E_KUBO_API_URL to enable"
+            "Skipping retrieval verification: set VIBEFI_RELAY_E2E_IPFS_GATEWAY_URL to enable"
         );
         return;
     }
