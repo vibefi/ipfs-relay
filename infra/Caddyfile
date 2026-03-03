@@ -1,0 +1,87 @@
+# ipfs.vibefi.dev — VibeFi IPFS upload relay + public IPFS gateway.
+# - /v1/*, /health, /metrics proxy to relay:8080.
+# - /ipfs/* proxies to kubo:8080 (gateway).
+# - Domain traffic uses HTTPS (automatic certs).
+# - Direct IP traffic stays on HTTP:80 for e2e testing without DNS/TLS.
+
+(shared_site_common) {
+    # Gzip responses (especially JSON/text)
+    encode gzip
+
+    # Structured access logs
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+
+    # Baseline hardening headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+}
+
+(relay_proxy) {
+    reverse_proxy relay:8080 {
+        # Pass real client IP for rate-limiting and audit logging
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+
+        # Generous timeout to match the relay's 120s upload limit
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 130s
+        }
+    }
+}
+
+(kubo_gateway_proxy) {
+    reverse_proxy kubo:8080 {
+        # Keep client IP details for downstream logs
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 300s
+        }
+    }
+}
+
+# Public domain: HTTPS with HSTS
+ipfs.vibefi.dev {
+    import shared_site_common
+
+    @kubo_gateway path /ipfs/*
+    handle @kubo_gateway {
+        import kubo_gateway_proxy
+    }
+
+    handle {
+        import relay_proxy
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+}
+
+# Plain HTTP entrypoint used for IP-based e2e tests.
+# Keep domain semantics: redirect domain host to HTTPS, but serve IP/other hosts over HTTP.
+http:// {
+    @relay_domain host ipfs.vibefi.dev
+    redir @relay_domain https://ipfs.vibefi.dev{uri} 308
+
+    import shared_site_common
+
+    @kubo_gateway path /ipfs/*
+    handle @kubo_gateway {
+        import kubo_gateway_proxy
+    }
+
+    handle {
+        import relay_proxy
+    }
+}

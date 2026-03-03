@@ -1,0 +1,99 @@
+name: Release Deploy
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production via Ansible
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      RELAY_SERVER_HOST: ${{ secrets.RELAY_SERVER_HOST }}
+      RELAY_SSH_USER: ${{ secrets.RELAY_SSH_USER }}
+      RELAY_SSH_PRIVATE_KEY: ${{ secrets.RELAY_SSH_PRIVATE_KEY }}
+      RELAY_PINATA_JWT: ${{ secrets.RELAY_PINATA_JWT }}
+      RELAY_FOUREVERLAND_TOKEN: ${{ secrets.RELAY_FOUREVERLAND_TOKEN }}
+      RELAY_KUBO_PUBLIC_IP: ${{ secrets.RELAY_KUBO_PUBLIC_IP }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate required deploy secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${RELAY_SERVER_HOST:-}" ]; then
+            echo "Missing required secret: RELAY_SERVER_HOST"
+            exit 1
+          fi
+          if [ -z "${RELAY_SSH_PRIVATE_KEY:-}" ]; then
+            echo "Missing required secret: RELAY_SSH_PRIVATE_KEY"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible and required collections
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          python -m pip install --upgrade pip
+          pip install ansible
+          ansible-galaxy collection install community.docker ansible.posix
+
+      - name: Write deploy SSH key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${RELAY_SSH_PRIVATE_KEY}" > ~/.ssh/relay_deploy_key
+          chmod 600 ~/.ssh/relay_deploy_key
+
+      - name: Generate temporary Ansible inventory
+        run: |
+          set -euo pipefail
+          SSH_USER="${RELAY_SSH_USER:-root}"
+          SSH_KEY_PATH="${HOME}/.ssh/relay_deploy_key"
+          cat > /tmp/inventory.ci.ini <<EOF
+          [relay]
+          target ansible_host=${RELAY_SERVER_HOST}
+
+          [relay:vars]
+          ansible_user=${SSH_USER}
+          ansible_ssh_private_key_file=${SSH_KEY_PATH}
+          ansible_ssh_common_args=-o StrictHostKeyChecking=accept-new
+          EOF
+
+      - name: Deploy release tag with Ansible playbook
+        run: |
+          set -euo pipefail
+
+          EXTRA_VARS=(
+            "-e" "deploy_source=local"
+            "-e" "local_project_dir=${GITHUB_WORKSPACE}"
+            "-e" "vibefi_relay_pinata_jwt=${RELAY_PINATA_JWT:-}"
+            "-e" "vibefi_relay_foureverland_token=${RELAY_FOUREVERLAND_TOKEN:-}"
+          )
+
+          if [ -n "${RELAY_KUBO_PUBLIC_IP:-}" ]; then
+            EXTRA_VARS+=("-e" "kubo_public_ip=${RELAY_KUBO_PUBLIC_IP}")
+          fi
+
+          ansible-playbook \
+            -i /tmp/inventory.ci.ini \
+            "${EXTRA_VARS[@]}" \
+            infra/ansible/playbook.yml

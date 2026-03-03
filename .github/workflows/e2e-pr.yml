@@ -1,0 +1,48 @@
+name: PR E2E
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  upload-e2e:
+    name: upload_e2e (local mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Start local Kubo daemon
+        run: |
+          docker run -d --name kubo -p 5001:5001 ipfs/kubo:v0.40.1
+
+      - name: Wait for Kubo API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS -X POST http://127.0.0.1:5001/api/v0/version >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Kubo API did not become ready in time."
+          docker logs kubo
+          exit 1
+
+      - name: Run upload e2e test suite
+        env:
+          VIBEFI_RELAY__IPFS__KUBO_API_URL: http://127.0.0.1:5001
+        run: cargo test --test upload_e2e -- --ignored --nocapture
+
+      - name: Print Kubo logs
+        if: always()
+        run: docker logs kubo

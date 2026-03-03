@@ -1,0 +1,69 @@
+[package]
+name = "ipfs-relay"
+version = "0.1.0"
+edition = "2024"
+description = "IPFS upload relay service for VibeFi bundles"
+license = "MIT"
+
+[lib]
+name = "ipfs_relay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ipfs-relay"
+path = "src/main.rs"
+
+[dependencies]
+# --- Web framework ---
+axum = { version = "0.8", features = ["multipart", "macros"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "timeout", "trace", "request-id", "normalize-path", "compression-gzip"] }
+
+# --- Async runtime ---
+tokio = { version = "1", features = ["full"] }
+
+# --- Serialization ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# --- ID generation ---
+ulid = { version = "1", features = ["serde"] }
+
+# --- HTTP client for Pinata / 4EVERLAND ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
+
+# --- Configuration ---
+config = { version = "0.15", features = ["toml"] }
+
+# --- Tracing / structured logging ---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+
+# --- Metrics ---
+axum-prometheus = "0.10"
+prometheus = { version = "0.13", features = ["process"] }
+
+# --- Error handling ---
+thiserror = "2"
+anyhow = "1"
+
+# --- Rate limiting (token bucket via tower-governor) ---
+tower_governor = { version = "0.8", features = ["axum"] }
+
+# --- Hashing ---
+sha2 = "0.10"
+
+# --- Misc utils ---
+bytes = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+hex = "0.4"
+
+[dev-dependencies]
+axum-test = "19"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

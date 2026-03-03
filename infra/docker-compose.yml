@@ -1,0 +1,85 @@
+name: ipfs-relay
+
+services:
+
+  # ── VibeFi IPFS relay ───────────────────────────────────────────────────────
+  relay:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_ENV: production
+      VIBEFI_RELAY__IPFS__KUBO_API_URL: http://kubo:5001
+    # Internal service port (Caddy proxies to this on the docker network)
+    expose:
+      - "8080"
+    depends_on:
+      kubo:
+        condition: service_healthy
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ── Kubo (go-ipfs) node ─────────────────────────────────────────────────────
+  kubo:
+    image: ipfs/kubo:v0.32.1
+    restart: unless-stopped
+    entrypoint: ["/usr/local/bin/start_ipfs.sh"]
+    volumes:
+      - kubo-data:/data/ipfs
+      - ../infra/scripts/kubo-init.sh:/usr/local/bin/start_ipfs.sh:ro
+    ports:
+      # Swarm: must be reachable from the internet for DHT / peer discovery
+      - "4001:4001/tcp"
+      - "4001:4001/udp"
+      # API (5001) and Gateway (8080) are NOT exposed to the host
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ── Caddy (TLS termination + reverse proxy) ──────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - relay
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  kubo-data:
+  caddy-data:
+  caddy-config:
