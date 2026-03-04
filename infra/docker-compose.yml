@@ -31,6 +31,9 @@ services:
     image: ipfs/kubo:v0.32.1
     restart: unless-stopped
     entrypoint: ["/usr/local/bin/start_ipfs.sh"]
+    environment:
+      KUBO_API_AUTH_SECRET: ${KUBO_API_AUTH_SECRET:-}
+      KUBO_PUBLIC_IP: ${KUBO_PUBLIC_IP:-}
     volumes:
       - kubo-data:/data/ipfs
       - ../infra/scripts/kubo-init.sh:/usr/local/bin/start_ipfs.sh:ro

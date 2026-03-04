@@ -4,6 +4,10 @@ IPFS upload relay service for VibeFi bundles (`ipfs.vibefi.dev`).
 
 Lets users publish VibeFi bundles to IPFS without creating a Pinata/4EVERLAND account. Validates the bundle, pins it to the protocol-owned Kubo node, and queues async replication to protocol-managed pinning providers.
 
+`ipfs.vibefi.dev/ipfs/*` remains the public IPFS gateway path.
+For CI deployments to the same Kubo node, infrastructure can optionally expose
+`ipfs.vibefi.dev/api/v0/dag/import` with Kubo API authorization enabled.
+
 ## Stack
 
 | Layer | Choice |

@@ -26,6 +26,14 @@ ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods \
 ipfs config --json API.HTTPHeaders.Access-Control-Allow-Headers \
     '["Authorization"]'
 
+# ── Optional API auth for narrowly exposed public endpoints ───────────────────
+# Expected format: basic:<username>:<password>
+if [ -n "${KUBO_API_AUTH_SECRET}" ]; then
+    echo "[kubo-init] Enabling Kubo API authorization for CI uploads"
+    ipfs config --json API.Authorizations \
+        "{\"ci-upload\":{\"AuthSecret\":\"${KUBO_API_AUTH_SECRET}\",\"AllowedPaths\":[\"/api/v0/dag/import\"]}}"
+fi
+
 # ── Swarm: announce public IP if provided ────────────────────────────────────
 if [ -n "${KUBO_PUBLIC_IP}" ]; then
     echo "[kubo-init] Setting swarm announce address to ${KUBO_PUBLIC_IP}"

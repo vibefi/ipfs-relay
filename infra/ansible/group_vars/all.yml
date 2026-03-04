@@ -16,6 +16,10 @@ github_actions_key_path: "{{ github_actions_key_dir }}/github_actions_relay_ed25
 # Defaults to the Ansible inventory host. Override if you have an elastic IP.
 kubo_public_ip: "{{ ansible_host }}"
 
+# Optional auth secret for Kubo API endpoints exposed via Caddy (CI use).
+# Format: basic:<username>:<password>
+kubo_api_auth_secret: ""
+
 # System packages to install before Docker
 base_packages:
   - ca-certificates

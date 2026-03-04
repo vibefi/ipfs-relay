@@ -1,6 +1,7 @@
 # ipfs.vibefi.dev — VibeFi IPFS upload relay + public IPFS gateway.
 # - /v1/*, /health, /metrics proxy to relay:8080.
 # - /ipfs/* proxies to kubo:8080 (gateway).
+# - /api/v0/dag/import proxies to kubo:5001 (CI CAR import endpoint).
 # - Domain traffic uses HTTPS (automatic certs).
 # - Direct IP traffic stays on HTTP:80 for e2e testing without DNS/TLS.
 
@@ -50,9 +51,28 @@
     }
 }
 
+(kubo_api_proxy) {
+    reverse_proxy kubo:5001 {
+        # Keep client IP details for downstream logs
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 300s
+        }
+    }
+}
+
 # Public domain: HTTPS with HSTS
 ipfs.vibefi.dev {
     import shared_site_common
+
+    # CI upload endpoint for CAR imports only.
+    @kubo_api_ci path /api/v0/dag/import
+    handle @kubo_api_ci {
+        import kubo_api_proxy
+    }
 
     @kubo_gateway path /ipfs/*
     handle @kubo_gateway {
@@ -75,6 +95,12 @@ http:// {
     redir @relay_domain https://ipfs.vibefi.dev{uri} 308
 
     import shared_site_common
+
+    # CI upload endpoint for CAR imports only.
+    @kubo_api_ci path /api/v0/dag/import
+    handle @kubo_api_ci {
+        import kubo_api_proxy
+    }
 
     @kubo_gateway path /ipfs/*
     handle @kubo_gateway {
