@@ -43,7 +43,14 @@ services:
       - "4001:4001/udp"
       # API (5001) and Gateway (8080) are NOT exposed to the host
     healthcheck:
-      test: ["CMD", "ipfs", "id"]
+      test:
+        - CMD-SHELL
+        - |
+          if [ -n "$${KUBO_API_AUTH_SECRET}" ]; then
+            ipfs --api-auth "$${KUBO_API_AUTH_SECRET}" id >/dev/null 2>&1
+          else
+            ipfs id >/dev/null 2>&1
+          fi
       interval: 15s
       timeout: 5s
       retries: 5
