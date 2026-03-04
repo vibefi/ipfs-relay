@@ -7,6 +7,7 @@ Lets users publish VibeFi bundles to IPFS without creating a Pinata/4EVERLAND ac
 `ipfs.vibefi.dev/ipfs/*` remains the public IPFS gateway path.
 For CI deployments to the same Kubo node, infrastructure can optionally expose
 `ipfs.vibefi.dev/api/v0/dag/import` with Kubo API authorization enabled.
+If `KUBO_API_AUTH_SECRET` is not set, that API path remains disabled.
 
 ## Stack
 

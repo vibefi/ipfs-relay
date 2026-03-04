@@ -67,6 +67,8 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      KUBO_API_AUTH_SECRET: ${KUBO_API_AUTH_SECRET:-}
     ports:
       - "80:80"
       - "443:443"

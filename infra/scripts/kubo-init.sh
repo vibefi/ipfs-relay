@@ -32,6 +32,9 @@ if [ -n "${KUBO_API_AUTH_SECRET}" ]; then
     echo "[kubo-init] Enabling Kubo API authorization for CI uploads"
     ipfs config --json API.Authorizations \
         "{\"ci-upload\":{\"AuthSecret\":\"${KUBO_API_AUTH_SECRET}\",\"AllowedPaths\":[\"/api/v0/dag/import\",\"/api/v0/id\"]}}"
+else
+    echo "[kubo-init] Disabling Kubo API authorization (no CI auth secret configured)"
+    ipfs config --json API.Authorizations '{}'
 fi
 
 # ── Swarm: announce public IP if provided ────────────────────────────────────

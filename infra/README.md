@@ -85,6 +85,8 @@ https://ipfs.vibefi.dev/api/v0/dag/import
 
 Set `KUBO_API_AUTH_SECRET` in `infra/.env` (format `basic:<user>:<pass>`) to
 require auth for this endpoint via Kubo `API.Authorizations`.
+If `KUBO_API_AUTH_SECRET` is unset, this endpoint is disabled at Caddy and
+returns `404`.
 
 If you use a proxy/CDN (for example Cloudflare), set the record to DNS-only until
 origin cert issuance completes, then re-enable proxy mode.
